@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QuantAI Guardian</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-brand"><span class="brand-icon">Q</span><h1><span>Quant</span>AI</h1></div>
+  <div class="topbar-right"><span class="status-dot" id="statusDot"></span><span id="statusText">--</span></div>
+</header>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" data-tab="dashboard">总览</button>
+  <button class="tab-btn" data-tab="stocks">行情</button>
+  <button class="tab-btn" data-tab="watchlist">自选</button>
+  <button class="tab-btn" data-tab="detail">个股</button>
+  <button class="tab-btn" data-tab="research">研究</button>
+  <button class="tab-btn" data-tab="models">模型</button>
+  <button class="tab-btn" data-tab="backtest">回测</button>
+  <button class="tab-btn" data-tab="strategy">记录</button>
+  <button class="tab-btn" data-tab="trading">交易</button>
+  <button class="tab-btn" data-tab="report">报告</button>
+</nav>
+
+<!-- ===== 总览 Dashboard ===== -->
+<section class="page active" id="page-dashboard">
+  <div class="section-header">
+    <h2 class="section-title">系统总览</h2>
+    <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">刷新</button>
+  </div>
+  <div class="dash-health" id="dashHealth"></div>
+  <div class="dash-grid" id="dashGrid"></div>
+  <div class="section-header" style="margin-top:14px">
+    <h2 class="section-title">快捷操作</h2>
+  </div>
+  <div class="btn-group">
+    <button class="btn btn-outline btn-sm" onclick="dashAction('bootstrap')">初始化资产池</button>
+    <button class="btn btn-outline btn-sm" onclick="dashAction('breadth')">重建市场宽度</button>
+    <button class="btn btn-outline btn-sm" onclick="dashAction('compute')">批量计算因子</button>
+    <button class="btn btn-outline btn-sm" onclick="dashAction('evaluate')">批量评估因子</button>
+  </div>
+  <div id="dashActionResult" style="display:none" class="card" style="margin-top:8px">
+    <div class="card-title">操作结果</div>
+    <pre id="dashActionPre" style="font-size:.76rem;color:var(--t2);white-space:pre-wrap;max-height:200px;overflow-y:auto"></pre>
+  </div>
+</section>
+
+<!-- ===== 行情 ===== -->
+<section class="page" id="page-stocks">
+  <div class="section-header">
+    <h2 class="section-title">大盘指数</h2>
+    <button class="btn btn-ghost btn-sm" onclick="loadIndices()">刷新</button>
+  </div>
+  <div class="metric-grid" id="indexGrid" style="margin-bottom:14px"></div>
+  <div class="section-header">
+    <h2 class="section-title">热门ETF</h2>
+    <button class="btn btn-ghost btn-sm" onclick="loadETFs()">刷新</button>
+  </div>
+  <div class="metric-grid" id="etfGrid" style="margin-bottom:14px"></div>
+  <div class="section-header">
+    <h2 class="section-title">A 股行情</h2>
+    <div class="btn-group" style="margin-bottom:0">
+      <button class="btn btn-outline btn-sm" id="a500SyncBtn" onclick="syncA500Data()">同步A500数据</button>
+      <button class="btn btn-primary btn-sm" onclick="syncStockList()">同步列表</button>
+    </div>
+  </div>
+  <input class="search-box" id="stockSearch" placeholder="搜索股票代码、名称、行业或ETF …" oninput="filterStocks()">
+  <div id="etfSearchResults" style="display:none"></div>
+  <div class="table-wrap">
+    <table class="stock-table">
+      <thead><tr><th>代码</th><th>名称</th><th>行业</th><th style="text-align:right">操作</th></tr></thead>
+      <tbody id="stockBody"></tbody>
+    </table>
+  </div>
+  <div id="stockLoading" class="empty-state" style="display:none"><span class="spinner"></span>加载中…</div>
+  <div id="stockEmpty" class="empty-state" style="display:none">暂无数据，请点击「同步 A 股列表」</div>
+</section>
+
+<!-- ===== 自选 ===== -->
+<section class="page" id="page-watchlist">
+  <div class="card">
+    <div class="card-title">ETF 拉取并加自选</div>
+    <div class="form-row">
+      <div class="form-field" style="flex:2">
+        <label>ETF 代码或名称</label>
+        <input id="wlEtfKeyword" list="wlEtfCandidates" placeholder="如 sh510300 / 沪深300ETF">
+        <datalist id="wlEtfCandidates"></datalist>
+      </div>
+      <div class="form-field">
+        <label>开始日期</label>
+        <input id="wlEtfStart" type="date" value="2024-01-01">
+      </div>
+      <div class="form-field" style="min-width:90px">
+        <label>历史范围</label>
+        <label style="display:flex;align-items:center;gap:6px;height:34px;font-size:.78rem;color:var(--t2);font-weight:500;text-transform:none;letter-spacing:0">
+          <input id="wlEtfFullHistory" type="checkbox" onchange="toggleWlEtfFullHistory()">
+          全部历史
+        </label>
+      </div>
+      <button class="btn btn-primary btn-sm" id="wlEtfAddBtn" onclick="pullEtfAndAddWatchlist()" style="align-self:end">拉取并加自选</button>
+    </div>
+  </div>
+  <div class="wl-header">
+    <span class="wl-header-left">股票</span>
+    <span class="wl-header-right"><span>最新价</span><span>涨跌幅</span></span>
+  </div>
+  <div id="wlList"></div>
+  <div id="wlEmpty" class="empty-state" style="display:none">自选列表为空，可先在上方拉取 ETF 并加入自选</div>
+</section>
+
+<!-- ===== 个股 (Xueqiu-style) ===== -->
+<section class="page" id="page-detail">
+  <div id="dtEmpty" class="empty-state">请从行情或自选列表中选择一只股票查看</div>
+  <div id="dtContent" style="display:none">
+    <div class="xq-detail-top">
+      <span class="xq-back" onclick="switchTab('stocks')">‹</span>
+      <span class="xq-stock-name" id="dtName">--</span>
+      <span class="xq-top-actions">
+        <button class="btn btn-outline btn-xs" onclick="detailBacktest()">快速回测</button>
+        <button class="btn btn-outline btn-xs" onclick="detailBacktestAll()">全策略回测</button>
+        <button class="btn btn-outline btn-xs" onclick="jumpDetailToResearch()" id="dtResearchBtn">研究</button>
+        <button class="btn btn-outline btn-xs" onclick="updateDetailFullHistory()" id="dtFullSyncBtn">更新补齐</button>
+        <button class="btn btn-primary btn-xs" onclick="addToWatchFromDetail()" id="dtWatchBtn">+ 自选</button>
+      </span>
+    </div>
+    <div class="xq-detail-sub">
+      <span id="dtCode" class="xq-code">--</span>
+      <span id="dtIndustry" class="xq-industry">--</span>
+      <span id="dtDate" class="xq-date"></span>
+    </div>
+    <div class="xq-price-area">
+      <div class="xq-price" id="dtPrice">--</div>
+      <div class="xq-change" id="dtChange">--</div>
+    </div>
+    <div class="xq-meta" id="dtMeta"></div>
+    <div class="chart-tabs" id="dtChartTabs">
+      <button class="chart-tab" data-period="5d">五日</button>
+      <button class="chart-tab active" data-period="day">日K</button>
+      <button class="chart-tab" data-period="week">周K</button>
+      <button class="chart-tab" data-period="month">月K</button>
+      <button class="chart-tab" data-period="quarter">季K</button>
+      <button class="chart-tab" data-period="year">年K</button>
+    </div>
+    <div class="chart-container" id="dtChart" style="height:260px"></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:10px 12px 6px"><span class="card-title">技术指标</span></div>
+      <div class="factor-grid" id="dtFactors"></div>
+    </div>
+    <div class="card" id="dtSignalCard" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span class="card-title" style="margin-bottom:0">ML 择时信号</span>
+        <button class="btn btn-outline btn-xs" onclick="runDetailPipeline()" id="dtPipelineBtn">一键研究</button>
+      </div>
+      <div id="dtSignalContent"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 研究 Research ===== -->
+<section class="page" id="page-research">
+  <div class="section-header">
+    <h2 class="section-title">因子研究</h2>
+    <span class="section-subtitle">P2 因子库 / 评估 / Walk-Forward</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title">因子库 <span style="font-weight:400;text-transform:none;letter-spacing:0" id="rsFactorCount"></span></div>
+    <div id="rsFactorLib" class="factor-lib-grid"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">因子计算 & 评估</div>
+    <div class="form-row">
+      <div class="form-field"><label>标的代码</label><input id="rsSymbol" value="sh000300"></div>
+      <div class="form-field"><label>开始日期</label><input id="rsStart" type="date" value="2025-01-01"></div>
+      <div class="form-field"><label>结束日期</label><input id="rsEnd" type="date"></div>
+      <div class="form-field"><label>前瞻期(天)</label><input id="rsFwdPeriod" type="number" value="5" min="1" max="60"></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-outline btn-sm" onclick="rsQueryFactors()" id="rsQueryBtn">查询</button>
+      <button class="btn btn-primary btn-sm" onclick="rsCompute()" id="rsComputeBtn">计算因子</button>
+      <button class="btn btn-outline btn-sm" onclick="rsEvaluate()" id="rsEvalBtn">评估因子</button>
+      <button class="btn btn-outline btn-sm" onclick="rsWalkForward()" id="rsWfBtn">Walk-Forward</button>
+    </div>
+    <div id="rsComputeResult" style="display:none"></div>
+    <div id="rsEvalResult" style="display:none"></div>
+    <div id="rsWfResult" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">标签预览 & 特征筛选</div>
+    <div class="btn-group">
+      <button class="btn btn-outline btn-sm" onclick="rsLabels()" id="rsLabelsBtn">生成标签</button>
+      <button class="btn btn-outline btn-sm" onclick="rsFeatureSelect()" id="rsFeatBtn">特征筛选</button>
+    </div>
+    <div id="rsLabelsResult" style="display:none"></div>
+    <div id="rsFeatResult" style="display:none"></div>
+  </div>
+
+  <div class="card" id="rsEvalHistCard" style="display:none">
+    <div class="card-title">评估历史</div>
+    <div style="overflow-x:auto"><table class="stock-table" id="rsEvalHistTable"></table></div>
+  </div>
+</section>
+
+<!-- ===== 模型 Models ===== -->
+<section class="page" id="page-models">
+  <div class="section-header">
+    <h2 class="section-title">ML 模型</h2>
+    <span class="section-subtitle">P3 训练 / P4 GP挖掘 / Pipeline</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title">一键 Pipeline</div>
+    <div class="form-row">
+      <div class="form-field"><label>标的代码</label><input id="mlPipeSym" value="sh000300"></div>
+      <div class="form-field"><label>模型类型</label>
+        <select id="mlPipeModel"><option value="lightgbm">LightGBM</option><option value="lasso">Lasso</option></select>
+      </div>
+      <div class="form-field"><label>标签列</label>
+        <select id="mlPipeLabel"><option value="label_dir_5">方向5日</option><option value="label_dir_10">方向10日</option><option value="label_dir_20">方向20日</option></select>
+      </div>
+      <div class="form-field"><label>开始日期</label><input id="mlPipeStart" type="date" value="2025-01-01"></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="mlRunPipeline()" id="mlPipeBtn">运行 Pipeline</button>
+    </div>
+    <div id="mlPipeResult" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">模型训练</div>
+    <div class="form-row">
+      <div class="form-field"><label>标的代码</label><input id="mlTrainSym" value="sh000300"></div>
+      <div class="form-field"><label>模型类型</label>
+        <select id="mlTrainModel"><option value="lightgbm">LightGBM</option><option value="lasso">Lasso</option></select>
+      </div>
+      <div class="form-field"><label>标签列</label>
+        <select id="mlTrainLabel"><option value="label_dir_5">方向5日</option><option value="label_dir_10">方向10日</option><option value="label_dir_20">方向20日</option></select>
+      </div>
+      <div class="form-field"><label>开始日期</label><input id="mlTrainStart" type="date" value="2025-01-01"></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary btn-sm" onclick="mlTrain()" id="mlTrainBtn">训练模型</button>
+      <button class="btn btn-outline btn-sm" onclick="mlModelWF()" id="mlWfBtn">模型 Walk-Forward</button>
+    </div>
+    <div id="mlTrainResult" style="display:none"></div>
+    <div id="mlWfResult" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">GP 表达式挖掘</div>
+    <div class="form-row">
+      <div class="form-field"><label>标的代码</label><input id="mlGpSym" value="sh000300"></div>
+      <div class="form-field"><label>开始日期</label><input id="mlGpStart" type="date" value="2024-01-01"></div>
+      <div class="form-field"><label>结束日期</label><input id="mlGpEnd" type="date"></div>
+      <div class="form-field"><label>前瞻期(天)</label><input id="mlGpFwd" type="number" value="5" min="1" max="60"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-field"><label>种群大小</label><input id="mlGpPop" type="number" value="200" min="20" max="1000"></div>
+      <div class="form-field"><label>进化代数</label><input id="mlGpGen" type="number" value="20" min="5" max="200"></div>
+      <div class="form-field"><label>最大树深</label><input id="mlGpDepth" type="number" value="5" min="2" max="5"></div>
+      <div class="form-field"><label>复杂度惩罚</label><input id="mlGpParsimony" type="number" value="0.005" step="0.001" min="0" max="0.1"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-field"><label>适应度</label>
+        <select id="mlGpMetric"><option value="sharpe">Sharpe</option><option value="ic">IC</option></select>
+      </div>
+      <div class="form-field" style="display:flex;align-items:end;padding-bottom:2px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.78rem;white-space:nowrap">
+          <input type="checkbox" id="mlGpSave"> 批量保存 Top5
+        </label>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary btn-sm" onclick="mlGpMine()" id="mlGpBtn">开始挖掘</button>
+      <button class="btn btn-outline btn-sm" onclick="mlLoadGpList()">刷新已保存</button>
+    </div>
+    <div id="mlGpResult" style="display:none"></div>
+  </div>
+
+  <div class="card" id="mlGpEvalCard" style="display:none">
+    <div class="card-title">GP 表达式评估</div>
+    <div class="form-row">
+      <div class="form-field" style="flex:2"><label>GP ID</label><input id="mlGpEvalId" readonly></div>
+      <div class="form-field"><label>标的代码</label><input id="mlGpEvalSym" value="sh000300"></div>
+      <div class="form-field"><label>开始日期</label><input id="mlGpEvalStart" type="date" value="2024-01-01"></div>
+      <div class="form-field"><label>结束日期</label><input id="mlGpEvalEnd" type="date"></div>
+      <div class="form-field"><label>前瞻期</label><input id="mlGpEvalFwd" type="number" value="5" min="1" max="60"></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary btn-sm" onclick="mlGpEvaluate()" id="mlGpEvalBtn">评估</button>
+    </div>
+    <div id="mlGpEvalResult" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">自定义表达式</div>
+    <p style="font-size:.7rem;color:var(--t3);margin:-6px 0 8px">
+      输入自定义因子表达式（使用 x0, x1, … 或因子名）。可用运算：add, sub, mul, _safe_div, _neg, _abs, _safe_log, _safe_sqrt, max, min。
+    </p>
+    <div class="form-row">
+      <div class="form-field" style="flex:3"><label>表达式</label><textarea id="ceExpr" rows="2" placeholder="sub(_safe_log(sub(ret_1, cci)), macd)" style="font-family:var(--font-mono);font-size:.72rem;width:100%;resize:vertical"></textarea></div>
+    </div>
+    <div class="form-row">
+      <div class="form-field"><label>标的代码</label><input id="ceSym" value="sh000300"></div>
+      <div class="form-field"><label>开始日期</label><input id="ceStart" type="date" value="2024-01-01"></div>
+      <div class="form-field"><label>结束日期</label><input id="ceEnd" type="date"></div>
+      <div class="form-field"><label>前瞻期</label><input id="ceFwd" type="number" value="5" min="1" max="60"></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary btn-sm" onclick="ceEvaluate()" id="ceEvalBtn">评估</button>
+      <button class="btn btn-outline btn-sm" onclick="cePredict()" id="cePredBtn">预测</button>
+      <button class="btn btn-outline btn-sm" onclick="ceBacktest()" id="ceBtBtn">回测</button>
+      <button class="btn btn-ghost btn-sm" onclick="ceSave()" id="ceSaveBtn">保存为 GP 表达式</button>
+    </div>
+    <div id="ceResult" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span class="card-title" style="margin-bottom:0">已保存 GP 表达式</span>
+      <button class="btn btn-ghost btn-sm" onclick="mlLoadGpList()">刷新</button>
+    </div>
+    <div id="mlGpSavedList"></div>
+    <div id="mlGpSavedEmpty" class="empty-state" style="display:none;padding:16px">暂无已保存表达式，请勾选"保存 Top5"后挖掘</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span class="card-title" style="margin-bottom:0">已训练模型</span>
+      <button class="btn btn-ghost btn-sm" onclick="mlLoadModels()">刷新</button>
+    </div>
+    <div id="mlModelList"></div>
+    <div id="mlModelEmpty" class="empty-state" style="display:none;padding:16px">暂无已训练模型</div>
+  </div>
+
+  <div class="card" id="mlPredictCard" style="display:none">
+    <div class="card-title">信号预测 / 回测</div>
+    <div class="form-row">
+      <div class="form-field" style="flex:3"><label>模型 / GP ID</label><input id="mlPredModelId" readonly></div>
+      <div class="form-field"><label>标的代码</label><input id="mlPredSym" value="sh000300"></div>
+      <div class="form-field"><label>类型</label><input id="mlPredType" value="ml" readonly style="opacity:.7"></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary btn-sm" onclick="mlPredict()" id="mlPredBtn">预测</button>
+      <button class="btn btn-outline btn-sm" onclick="mlBacktest()" id="mlBtBtn">回测</button>
+    </div>
+    <div id="mlPredResult" style="display:none"></div>
+    <div id="mlBtResult" style="display:none"></div>
+  </div>
+</section>
+
+<!-- ===== 回测记录 ===== -->
+<section class="page" id="page-strategy">
+  <div class="section-header">
+    <h2 class="section-title">回测记录</h2>
+    <button class="btn btn-ghost btn-sm" onclick="loadBtRecords()">刷新</button>
+  </div>
+  <div id="btRecLoading" class="empty-state" style="display:none"><span class="spinner"></span>加载中…</div>
+  <div id="btRecEmpty" class="empty-state" style="display:none">暂无回测记录，请前往回测页面运行策略</div>
+  <div id="btRecList"></div>
+</section>
+
+<!-- ===== 回测 ===== -->
+<section class="page" id="page-backtest">
+  <div class="form-row">
+    <div class="form-field" style="flex:2"><label>策略</label>
+      <select id="btStrategy" onchange="onStrategyChange()">
+        <option value="ma_cross">MA 均线交叉</option>
+        <option value="rsi_reversal">RSI 超买超卖反转</option>
+        <option value="bollinger_breakout">布林通道突破</option>
+      </select>
+    </div>
+    <div class="form-field"><label>股票代码</label><input id="btSymbol" value="000001"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-field"><label>开始日期</label><input id="btStart" type="date" value="2025-01-01"></div>
+    <div class="form-field"><label>结束日期</label><input id="btEnd" type="date"></div>
+    <div class="form-field"><label>初始资金(万)</label><input id="btCapital" type="number" value="100" min="1" max="10000"></div>
+    <div class="form-field"><label>交易成本(‰)</label><input id="btCommission" type="number" value="1" min="0" max="10" step="0.1"></div>
+  </div>
+  <div id="btParamsMaCross" class="form-row">
+    <div class="form-field"><label>快线周期</label><input id="btFast" type="number" value="5" min="1" max="60"></div>
+    <div class="form-field"><label>慢线周期</label><input id="btSlow" type="number" value="20" min="2" max="120"></div>
+  </div>
+  <div id="btParamsRsi" class="form-row" style="display:none">
+    <div class="form-field"><label>RSI周期</label><input id="btRsiPeriod" type="number" value="14" min="5" max="30"></div>
+    <div class="form-field"><label>超卖线</label><input id="btOversold" type="number" value="30" min="10" max="50"></div>
+    <div class="form-field"><label>超买线</label><input id="btOverbought" type="number" value="70" min="50" max="90"></div>
+  </div>
+  <div id="btParamsBb" class="form-row" style="display:none">
+    <div class="form-field"><label>BB周期</label><input id="btBbPeriod" type="number" value="20" min="5" max="60"></div>
+    <div class="form-field"><label>标准差倍数</label><input id="btBbStd" type="number" value="2.0" min="1" max="4" step="0.1"></div>
+  </div>
+  <div class="btn-group">
+    <button class="btn btn-primary" onclick="runBacktest()" id="btBtn">运行回测</button>
+    <button class="btn btn-outline" onclick="runOptimize()" id="optBtn">参数优化</button>
+  </div>
+  <div id="btResult" style="display:none">
+    <div class="bt-grid" id="btGrid"></div>
+    <div class="card" style="margin-top:10px" id="btDetailCard">
+      <div class="card-title">回测详情</div>
+      <div id="btDetailContent" style="font-size:.82rem;line-height:1.7;color:var(--t2)"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 交易 ===== -->
+<section class="page" id="page-trading">
+  <div class="card"><div class="card-title">模拟账户</div><div class="xq-meta" id="ptAccount"></div></div>
+  <div class="form-row">
+    <div class="form-field"><label>股票代码</label><input id="ptSymbol" value="000001"></div>
+    <div class="form-field"><label>方向</label><select id="ptSide"><option value="buy">买入</option><option value="sell">卖出</option></select></div>
+    <div class="form-field"><label>数量(股)</label><input id="ptQty" type="number" value="100" min="1"></div>
+    <button class="btn btn-primary" onclick="placeOrder()" id="ptBtn">下单</button>
+  </div>
+  <div class="card" style="margin-top:2px"><div class="card-title">持仓</div><div class="table-wrap"><table class="stock-table" id="ptPositions"><tbody></tbody></table></div></div>
+  <div class="card"><div class="card-title">最近订单</div><div class="table-wrap"><table class="stock-table" id="ptOrders"><tbody></tbody></table></div></div>
+</section>
+
+<!-- ===== 报告 ===== -->
+<section class="page" id="page-report">
+  <div class="btn-group"><button class="btn btn-primary btn-sm" onclick="generateReport()">生成最新日报</button></div>
+  <div class="report-content" id="reportContent">点击「生成最新日报」查看报告</div>
+</section>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- JS modules -->
+<script src="/static/js/core.js?v=3"></script>
+<script src="/static/js/dashboard.js?v=2"></script>
+<script src="/static/js/stocks.js?v=3"></script>
+<script src="/static/js/detail.js?v=6"></script>
+<script src="/static/js/watchlist.js?v=6"></script>
+<script src="/static/js/research.js?v=5"></script>
+<script src="/static/js/models.js?v=6"></script>
+<script src="/static/js/strategy.js?v=5"></script>
+<script src="/static/js/backtest.js?v=2"></script>
+<script src="/static/js/trading.js?v=2"></script>
+<script src="/static/js/report.js?v=2"></script>
+<script src="/static/js/init.js?v=2"></script>
+</body>
+</html>

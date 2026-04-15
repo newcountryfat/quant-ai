@@ -1,0 +1,262 @@
+@baseUrl = http://localhost:8000
+@start = 2025-01-01
+@end = 2026-04-12
+@symbol = sh000300
+@sectorSymbol = sector:银行
+
+# ==================== System ====================
+
+### Health
+GET {{baseUrl}}/health
+
+### Data summary
+GET {{baseUrl}}/api/v1/data/summary
+
+### Job logs
+GET {{baseUrl}}/api/v1/logs/jobs?limit=20
+
+# ==================== P1 Data ====================
+
+### Bootstrap universe
+POST {{baseUrl}}/api/v1/universe/bootstrap
+
+### Universe assets
+GET {{baseUrl}}/api/v1/universe/assets?limit=50
+
+### Universe mappings
+GET {{baseUrl}}/api/v1/universe/mappings?relation_type=tracks
+
+### Sync index universe
+POST {{baseUrl}}/api/v1/universe/sync
+Content-Type: application/json
+
+{
+  "asset_type": "index",
+  "start": "{{start}}",
+  "end": "{{end}}",
+  "only_active": true,
+  "limit": 3
+}
+
+### Universe statuses
+GET {{baseUrl}}/api/v1/universe/statuses?asset_type=index
+
+### Rebuild breadth
+POST {{baseUrl}}/api/v1/features/breadth/rebuild
+Content-Type: application/json
+
+{
+  "start": "{{start}}",
+  "end": "{{end}}"
+}
+
+### Query breadth
+GET {{baseUrl}}/api/v1/features/breadth?limit=5
+
+### Rebuild sector universe
+POST {{baseUrl}}/api/v1/universe/sectors/rebuild?market=A
+
+### Query sector assets
+GET {{baseUrl}}/api/v1/universe/assets?asset_type=sector&limit=20
+
+### Query sector constituents
+GET {{baseUrl}}/api/v1/universe/sectors/constituents?sector_symbol={{sectorSymbol}}
+
+### Symbol info
+GET {{baseUrl}}/api/v1/data/{{symbol}}/info
+
+# ==================== P2 Factor Research ====================
+
+### Factor library list
+GET {{baseUrl}}/api/v1/factors/library/list
+
+### Compute factors (quick preview)
+GET {{baseUrl}}/api/v1/factors/{{symbol}}
+
+### Batch compute and persist all factors
+POST {{baseUrl}}/api/v1/factors/batch-compute
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "start": "{{start}}",
+  "end": "{{end}}",
+  "persist": true
+}
+
+### Evaluate factors (IC/ICIR/rank IC)
+POST {{baseUrl}}/api/v1/factors/evaluate
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "forward_period": 5,
+  "start": "{{start}}",
+  "end": "{{end}}",
+  "persist": true
+}
+
+### Walk-forward validation (selected factors)
+POST {{baseUrl}}/api/v1/factors/walk-forward
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "factor_names": ["rsi_14", "macd_hist", "cci", "roc_5", "rvol_10", "vol_ratio"],
+  "train_days": 120,
+  "test_days": 20,
+  "step_days": 20,
+  "forward_period": 5,
+  "start": "{{start}}"
+}
+
+### Walk-forward validation (all factors)
+POST {{baseUrl}}/api/v1/factors/walk-forward
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "train_days": 120,
+  "test_days": 20,
+  "step_days": 20,
+  "forward_period": 5,
+  "start": "{{start}}"
+}
+
+### Query eval history
+GET {{baseUrl}}/api/v1/factors/eval-history?symbol={{symbol}}&limit=10
+
+### Query persisted factor values
+GET {{baseUrl}}/api/v1/factors/values/{{symbol}}?factor_name=rsi_14&limit=10
+
+# ==================== Strategy / Backtest ====================
+
+### Run backtest
+POST {{baseUrl}}/api/v1/backtest
+Content-Type: application/json
+
+{
+  "strategy_id": "ma_cross",
+  "symbol": "{{symbol}}",
+  "start": "{{start}}",
+  "end": "{{end}}",
+  "params": {
+    "fast": 5,
+    "slow": 20
+  }
+}
+
+### Backtest history
+GET {{baseUrl}}/api/v1/backtest/history?limit=10
+
+### Strategies list
+GET {{baseUrl}}/api/v1/strategies
+
+### Optimize strategy
+POST {{baseUrl}}/api/v1/optimize
+Content-Type: application/json
+
+{
+  "strategy_id": "ma_cross",
+  "symbol": "{{symbol}}",
+  "start": "{{start}}",
+  "end": "{{end}}",
+  "n_trials": 20,
+  "metric": "sharpe_ratio"
+}
+
+# ==================== P3 ML Models ====================
+
+### Generate labels
+POST {{baseUrl}}/api/v1/ml/labels
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "forward_periods": [5, 10, 20],
+  "start": "{{start}}"
+}
+
+### Feature selection
+POST {{baseUrl}}/api/v1/ml/feature-select
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "start": "{{start}}"
+}
+
+### Train Lasso model
+POST {{baseUrl}}/api/v1/ml/train
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "model_type": "lasso",
+  "label_col": "label_dir_5",
+  "forward_period": 5,
+  "train_ratio": 0.8,
+  "start": "{{start}}"
+}
+
+### Train LightGBM model
+POST {{baseUrl}}/api/v1/ml/train
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "model_type": "lightgbm",
+  "label_col": "label_dir_5",
+  "forward_period": 5,
+  "train_ratio": 0.8,
+  "start": "{{start}}"
+}
+
+### List trained models
+GET {{baseUrl}}/api/v1/ml/models
+
+### ML walk-forward validation
+POST {{baseUrl}}/api/v1/ml/walk-forward
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "model_type": "lightgbm",
+  "label_col": "label_dir_5",
+  "forward_period": 5,
+  "train_days": 200,
+  "test_days": 20,
+  "step_days": 20,
+  "start": "{{start}}"
+}
+
+# ==================== P4 GP + Pipeline ====================
+
+### GP expression mining
+POST {{baseUrl}}/api/v1/ml/gp-mine
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "forward_period": 5,
+  "population_size": 100,
+  "n_generations": 10,
+  "metric": "sharpe",
+  "start": "{{start}}"
+}
+
+### One-click pipeline
+POST {{baseUrl}}/api/v1/ml/pipeline
+Content-Type: application/json
+
+{
+  "symbol": "{{symbol}}",
+  "model_type": "lightgbm",
+  "label_col": "label_dir_5",
+  "forward_period": 5,
+  "train_ratio": 0.8,
+  "wf_train_days": 200,
+  "wf_test_days": 20,
+  "wf_step_days": 20,
+  "start": "{{start}}"
+}
