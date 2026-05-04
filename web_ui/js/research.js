@@ -297,6 +297,7 @@ async function rsWalkForward() {
 
     if (!data.length) { result.innerHTML = '<div style="color:var(--t3);font-size:.78rem">无结果</div>'; return; }
 
+    const fmt = (v, digits = 4) => (Number.isFinite(Number(v)) ? Number(v).toFixed(digits) : '--');
     let html = '<div style="overflow-x:auto"><table class="eval-table"><thead><tr>';
     html += '<th>因子</th><th>Folds</th><th>Avg Test IC</th><th>Avg Return</th><th>Avg Sharpe</th><th>IC 一致性</th>';
     html += '</tr></thead><tbody>';
@@ -311,7 +312,42 @@ async function rsWalkForward() {
       </tr>`;
     });
     html += '</tbody></table></div>';
-    result.innerHTML = `<div style="font-size:.7rem;color:var(--t3);margin-bottom:4px">${data.length} 因子 Walk-Forward 结果</div>` + html;
+
+    let detailHtml = '<div style="margin-top:10px">';
+    data.forEach(r => {
+      const folds = r.folds || [];
+      if (!folds.length) return;
+      detailHtml += `<details style="margin-bottom:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);overflow:hidden">
+        <summary style="cursor:pointer;list-style:none;padding:10px 12px;font-size:.78rem;color:var(--t2);display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <span style="font-weight:700;color:var(--t1)">${r.factor_name}</span>
+          <span>Folds: <span class="mono">${r.n_folds || 0}</span></span>
+          <span>Avg IC: <span class="mono">${fmt(r.avg_test_ic)}</span></span>
+          <span>一致性: <span class="mono">${fmt((r.ic_consistency || 0) * 100, 0)}%</span></span>
+        </summary>
+        <div style="padding:0 10px 10px">
+          <div style="overflow-x:auto"><table class="eval-table"><thead><tr>
+            <th>Fold</th><th>训练区间</th><th>测试区间</th><th>Train IC</th><th>Test IC</th><th>Test Return</th><th>Test Sharpe</th><th>训练样本</th><th>测试样本</th>
+          </tr></thead><tbody>`;
+      folds.forEach(f => {
+        const testIc = Number(f.test_ic || 0);
+        const ret = Number(f.test_return || 0);
+        detailHtml += `<tr>
+          <td>${(f.fold_idx ?? 0) + 1}</td>
+          <td style="font-size:.66rem">${f.train_period || '--'}</td>
+          <td style="font-size:.66rem">${f.test_period || '--'}</td>
+          <td>${fmt(f.train_ic)}</td>
+          <td style="color:${testIc >= 0 ? 'var(--r)' : 'var(--g)'}">${fmt(f.test_ic)}</td>
+          <td style="color:${ret >= 0 ? 'var(--r)' : 'var(--g)'}">${fmt(ret * 100, 2)}%</td>
+          <td>${fmt(f.test_sharpe)}</td>
+          <td>${f.n_train ?? '--'}</td>
+          <td>${f.n_test ?? '--'}</td>
+        </tr>`;
+      });
+      detailHtml += '</tbody></table></div></div></details>';
+    });
+    detailHtml += '</div>';
+
+    result.innerHTML = `<div style="font-size:.7rem;color:var(--t3);margin-bottom:4px">${data.length} 因子 Walk-Forward 结果</div>` + html + detailHtml;
     toast('Walk-Forward 完成');
   } catch (e) {
     result.innerHTML = `<div style="color:var(--r);font-size:.78rem">失败: ${e.message}</div>`;

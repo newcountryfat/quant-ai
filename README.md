@@ -9,7 +9,7 @@ AI 驱动的本地量化分析平台，以 OpenClaw 为中央智能调度器。
 python3.11 -m venv venv && source venv/bin/activate
 
 # 2. 安装依赖
-pip install -r requirements.txt
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 3. 配置环境变量
 cp .env.example .env
@@ -24,10 +24,12 @@ python main.py
 
 ## 服务端口
 
-| 服务 | 地址 | 说明 |
-|---|---|---|
-| API Server | http://localhost:8000 | RESTful 接口 + OpenAPI 文档 (/docs) |
-| Frontend | http://localhost:8000/ | 内置静态页面（当前后端联调优先使用 API） |
+
+| 服务         | 地址                                               | 说明                              |
+| ---------- | ------------------------------------------------ | ------------------------------- |
+| API Server | [http://localhost:8000](http://localhost:8000)   | RESTful 接口 + OpenAPI 文档 (/docs) |
+| Frontend   | [http://localhost:8000/](http://localhost:8000/) | 内置静态页面（当前后端联调优先使用 API）          |
+
 
 ## 项目结构
 
@@ -56,3 +58,4 @@ quant-ai/
 - [docs/technical-design.md](./docs/technical-design.md)
 - [docs/api-reference.md](./docs/api-reference.md)
 - [docs/backend-api-runbook.md](./docs/backend-api-runbook.md)
+
