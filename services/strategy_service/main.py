@@ -283,18 +283,150 @@ class StrategyService:
             conn.commit()
         return {"strategy_id": strategy_id, "status": status}
 
-    async def get_backtest_history(self, strategy_id: str | None = None, limit: int = 20) -> list[dict]:
+    async def get_backtest_history(
+        self,
+        strategy_id: str | None = None,
+        limit: int = 20,
+        folder_id: int | None = None,
+    ) -> list[dict]:
         with get_db() as conn:
+            clauses: list[str] = []
+            params: list[Any] = []
             if strategy_id:
-                rows = conn.execute(
-                    "SELECT * FROM backtest_results WHERE strategy_id=? ORDER BY run_at DESC LIMIT ?",
-                    (strategy_id, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM backtest_results ORDER BY run_at DESC LIMIT ?", (limit,),
-                ).fetchall()
+                clauses.append("r.strategy_id = ?")
+                params.append(strategy_id)
+            if folder_id is not None:
+                clauses.append("r.folder_id = ?")
+                params.append(folder_id)
+            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            rows = conn.execute(
+                "SELECT r.*, f.name AS folder_name, COUNT(c.id) AS comment_count "
+                "FROM backtest_results r "
+                "LEFT JOIN backtest_folders f ON f.id = r.folder_id "
+                "LEFT JOIN backtest_comments c ON c.record_id = r.id "
+                f"{where_sql} "
+                "GROUP BY r.id "
+                "ORDER BY r.run_at DESC LIMIT ?",
+                (*params, limit),
+            ).fetchall()
         return [dict(r) for r in rows]
+
+    async def list_backtest_folders(self) -> list[dict[str, Any]]:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT f.*, COUNT(r.id) AS record_count "
+                "FROM backtest_folders f "
+                "LEFT JOIN backtest_results r ON r.folder_id = f.id "
+                "GROUP BY f.id "
+                "ORDER BY f.updated_at DESC, f.id DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    async def create_backtest_folder(self, name: str) -> dict[str, Any]:
+        now = datetime.now().isoformat()
+        with get_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO backtest_folders (name, created_at, updated_at) VALUES (?,?,?)",
+                (name.strip(), now, now),
+            )
+            row = conn.execute(
+                "SELECT * FROM backtest_folders WHERE id = ?",
+                (cur.lastrowid,),
+            ).fetchone()
+        return dict(row) if row else {}
+
+    async def update_backtest_folder(self, folder_id: int, name: str) -> dict[str, Any]:
+        with get_db() as conn:
+            cur = conn.execute(
+                "UPDATE backtest_folders SET name = ?, updated_at = ? WHERE id = ?",
+                (name.strip(), datetime.now().isoformat(), folder_id),
+            )
+            if cur.rowcount == 0:
+                raise ValueError(f"Backtest folder {folder_id} not found")
+            row = conn.execute(
+                "SELECT * FROM backtest_folders WHERE id = ?",
+                (folder_id,),
+            ).fetchone()
+        return dict(row) if row else {}
+
+    async def delete_backtest_folder(self, folder_id: int) -> dict[str, Any]:
+        with get_db() as conn:
+            conn.execute("UPDATE backtest_results SET folder_id = NULL WHERE folder_id = ?", (folder_id,))
+            cur = conn.execute("DELETE FROM backtest_folders WHERE id = ?", (folder_id,))
+            if cur.rowcount == 0:
+                raise ValueError(f"Backtest folder {folder_id} not found")
+        return {"deleted": folder_id}
+
+    async def batch_delete_backtest_records(self, record_ids: list[int]) -> dict[str, Any]:
+        ids = [int(rid) for rid in dict.fromkeys(record_ids) if rid is not None]
+        if not ids:
+            return {"deleted": 0, "record_ids": []}
+        placeholders = ",".join("?" for _ in ids)
+        with get_db() as conn:
+            cur = conn.execute(
+                f"DELETE FROM backtest_results WHERE id IN ({placeholders})",
+                ids,
+            )
+        return {"deleted": cur.rowcount, "record_ids": ids}
+
+    async def move_backtest_records(self, record_ids: list[int], folder_id: int | None) -> dict[str, Any]:
+        ids = [int(rid) for rid in dict.fromkeys(record_ids) if rid is not None]
+        if not ids:
+            return {"updated": 0, "record_ids": [], "folder_id": folder_id}
+        with get_db() as conn:
+            if folder_id is not None:
+                exists = conn.execute(
+                    "SELECT 1 FROM backtest_folders WHERE id = ?",
+                    (folder_id,),
+                ).fetchone()
+                if not exists:
+                    raise ValueError(f"Backtest folder {folder_id} not found")
+            placeholders = ",".join("?" for _ in ids)
+            cur = conn.execute(
+                f"UPDATE backtest_results SET folder_id = ? WHERE id IN ({placeholders})",
+                (folder_id, *ids),
+            )
+        return {"updated": cur.rowcount, "record_ids": ids, "folder_id": folder_id}
+
+    async def list_backtest_comments(self, record_id: int) -> list[dict[str, Any]]:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, record_id, content, created_at, updated_at "
+                "FROM backtest_comments WHERE record_id = ? ORDER BY updated_at DESC, id DESC",
+                (record_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    async def create_backtest_comment(self, record_id: int, content: str) -> dict[str, Any]:
+        now = datetime.now().isoformat()
+        with get_db() as conn:
+            exists = conn.execute("SELECT 1 FROM backtest_results WHERE id = ?", (record_id,)).fetchone()
+            if not exists:
+                raise ValueError(f"Backtest record {record_id} not found")
+            cur = conn.execute(
+                "INSERT INTO backtest_comments (record_id, content, created_at, updated_at) VALUES (?,?,?,?)",
+                (record_id, content.strip(), now, now),
+            )
+            row = conn.execute("SELECT * FROM backtest_comments WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return dict(row) if row else {}
+
+    async def update_backtest_comment(self, comment_id: int, content: str) -> dict[str, Any]:
+        with get_db() as conn:
+            cur = conn.execute(
+                "UPDATE backtest_comments SET content = ?, updated_at = ? WHERE id = ?",
+                (content.strip(), datetime.now().isoformat(), comment_id),
+            )
+            if cur.rowcount == 0:
+                raise ValueError(f"Backtest comment {comment_id} not found")
+            row = conn.execute("SELECT * FROM backtest_comments WHERE id = ?", (comment_id,)).fetchone()
+        return dict(row) if row else {}
+
+    async def delete_backtest_comment(self, comment_id: int) -> dict[str, Any]:
+        with get_db() as conn:
+            cur = conn.execute("DELETE FROM backtest_comments WHERE id = ?", (comment_id,))
+            if cur.rowcount == 0:
+                raise ValueError(f"Backtest comment {comment_id} not found")
+        return {"deleted": comment_id}
 
     # ================================================================
     # P2 — Batch factor compute, evaluate, walk-forward

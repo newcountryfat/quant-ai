@@ -488,6 +488,10 @@ function _mlShowPredictCard(id, symbol, type) {
   document.getElementById('mlPredModelId').value = id;
   document.getElementById('mlPredSym').value = symbol;
   document.getElementById('mlPredType').value = type;
+  const startEl = document.getElementById('mlPredStart');
+  const endEl = document.getElementById('mlPredEnd');
+  if (startEl && !startEl.value) startEl.value = '2025-01-01';
+  if (endEl && !endEl.value) endEl.value = today();
   document.getElementById('mlPredResult').style.display = 'none';
   document.getElementById('mlBtResult').style.display = 'none';
   card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -500,7 +504,10 @@ async function mlPredict() {
   const modelId = document.getElementById('mlPredModelId').value;
   const sym = document.getElementById('mlPredSym').value.trim();
   const type = document.getElementById('mlPredType').value;
+  const start = document.getElementById('mlPredStart').value || '2025-01-01';
+  const end = document.getElementById('mlPredEnd').value || today();
   if (!modelId || !sym) { toast('请选择模型和标的', 'error'); return; }
+  if (start > end) { toast('开始日期不能晚于结束日期', 'error'); return; }
 
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
   result.style.display = 'block';
@@ -510,18 +517,19 @@ async function mlPredict() {
     const bodyKey = type === 'gp' ? 'gp_id' : 'model_id';
     const r = await api(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [bodyKey]: modelId, symbol: sym, start: '2026-03-01' }),
+      body: JSON.stringify({ [bodyKey]: modelId, symbol: sym, start, end }),
     });
     const preds = r.predictions || [];
     const recent = preds.slice(-10);
-    let html = `<div style="font-size:.72rem;color:var(--t3);margin-bottom:4px">${sym} 最近 ${recent.length} 日信号 (${type.toUpperCase()})</div>`;
+    let html = `<div style="font-size:.72rem;color:var(--t3);margin-bottom:4px">${sym} 最近 ${recent.length} 日信号 (${type.toUpperCase()}) · ${start} ~ ${end}</div>`;
     recent.forEach(p => {
       if (type === 'gp') {
         const dir = p.direction;
-        const isLong = dir > 0;
+        const stateCls = dir > 0 ? 'long' : (dir < 0 ? 'short' : 'neutral');
+        const stateText = dir > 0 ? '看多' : (dir < 0 ? '看空' : '中性');
         html += `<div class="signal-row">
           <span class="signal-date">${p.date}</span>
-          <span class="signal-badge ${isLong ? 'long' : 'short'}">${isLong ? '看多' : '看空'}</span>
+          <span class="signal-badge ${stateCls}">${stateText}</span>
           <span class="signal-prob">sig: ${p.signal?.toFixed(4) || '--'}</span>
         </div>`;
       } else {
@@ -548,7 +556,10 @@ async function mlBacktest() {
   const modelId = document.getElementById('mlPredModelId').value;
   const sym = document.getElementById('mlPredSym').value.trim();
   const type = document.getElementById('mlPredType').value;
+  const start = document.getElementById('mlPredStart').value || '2025-01-01';
+  const end = document.getElementById('mlPredEnd').value || today();
   if (!modelId || !sym) { toast('请选择模型/表达式和标的', 'error'); return; }
+  if (start > end) { toast('开始日期不能晚于结束日期', 'error'); return; }
 
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>回测中…';
   result.style.display = 'block';
@@ -557,7 +568,7 @@ async function mlBacktest() {
   try {
     const endpoint = type === 'gp' ? '/api/v1/backtest/gp' : '/api/v1/backtest/ml';
     const bodyKey = type === 'gp' ? 'gp_id' : 'model_id';
-    const body = { [bodyKey]: modelId, symbol: sym, start: '2025-01-01', initial_capital: 1000000, commission: 0.001 };
+    const body = { [bodyKey]: modelId, symbol: sym, start, end, initial_capital: 1000000, commission: 0.001 };
     if (type === 'ml') body.threshold = 0.5;
 
     const r = await api(endpoint, {
@@ -565,7 +576,7 @@ async function mlBacktest() {
       body: JSON.stringify(body),
     });
 
-    let html = `<div style="font-size:.78rem;color:var(--t2);margin-bottom:6px">${type.toUpperCase()} 回测: ${modelId} @ ${sym}</div>`;
+    let html = `<div style="font-size:.78rem;color:var(--t2);margin-bottom:6px">${type.toUpperCase()} 回测: ${modelId} @ ${sym} · ${start} ~ ${end}</div>`;
     html += '<div class="bt-grid" style="margin-bottom:8px">';
     html += mCard('总收益', (r.total_return * 100).toFixed(2) + '%', r.total_return >= 0 ? 'positive' : 'negative');
     html += mCard('年化', (r.annual_return * 100).toFixed(2) + '%', r.annual_return >= 0 ? 'positive' : 'negative');
@@ -687,9 +698,9 @@ async function cePredict() {
     let html = `<div style="font-size:.78rem;color:var(--t2);margin-bottom:6px">自定义表达式预测 @ ${inp.symbol} — ${preds.length} 条信号 (显示最近10条)</div>`;
     html += '<table class="eval-table" style="font-size:.7rem"><thead><tr><th>日期</th><th>信号值</th><th>方向</th></tr></thead><tbody>';
     last10.forEach(p => {
-      const dirTxt = p.direction > 0 ? '看多' : (p.direction < 0 ? '看空' : '中性');
-      const dirColor = p.direction > 0 ? 'var(--r)' : (p.direction < 0 ? 'var(--g)' : 'var(--t3)');
-      html += `<tr><td>${p.date}</td><td class="mono">${p.signal}</td><td style="color:${dirColor};font-weight:600">${dirTxt}</td></tr>`;
+      const stateCls = p.direction > 0 ? 'long' : (p.direction < 0 ? 'short' : 'neutral');
+      const stateText = p.direction > 0 ? '看多' : (p.direction < 0 ? '看空' : '中性');
+      html += `<tr><td>${p.date}</td><td class="mono">${p.signal}</td><td><span class="signal-badge ${stateCls}">${stateText}</span></td></tr>`;
     });
     html += '</tbody></table>';
     result.innerHTML = html;

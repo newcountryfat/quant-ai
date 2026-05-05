@@ -10,6 +10,7 @@ const App = {
   etfList: [],
   etfUniverseList: [],
   btHistoryData: [],
+  btFolders: [],
   effectiveStrategies: [],
   detailDailyRows: [],
   factorLibrary: [],

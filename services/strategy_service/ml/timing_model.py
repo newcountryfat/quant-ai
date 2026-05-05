@@ -14,6 +14,13 @@ import pandas as pd
 from loguru import logger
 
 
+LIGHTGBM_INSTALL_HINT = (
+    "lightgbm is required for model_type='lightgbm'. "
+    "Install dependencies with `pip install -r requirements.txt` "
+    "or switch model_type to 'lasso'."
+)
+
+
 @dataclass
 class ModelMetrics:
     accuracy: float = 0.0
@@ -89,6 +96,14 @@ def _compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray 
         except ValueError:
             m.log_loss = 0.0
     return m
+
+
+def ensure_lightgbm_available() -> Any:
+    try:
+        import lightgbm as lgb
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(LIGHTGBM_INSTALL_HINT) from exc
+    return lgb
 
 
 class TimingModelTrainer:
@@ -234,7 +249,7 @@ class TimingModelTrainer:
 
     @staticmethod
     def _train_lightgbm(X: pd.DataFrame, y: pd.Series, params: dict | None) -> tuple[Any, list[dict]]:
-        import lightgbm as lgb
+        lgb = ensure_lightgbm_available()
 
         default_p = {
             "objective": "binary",

@@ -349,6 +349,10 @@
       <div class="form-field"><label>标的代码</label><input id="mlPredSym" value="sh000300"></div>
       <div class="form-field"><label>类型</label><input id="mlPredType" value="ml" readonly style="opacity:.7"></div>
     </div>
+    <div class="form-row">
+      <div class="form-field"><label>开始日期</label><input id="mlPredStart" type="date" value="2025-01-01"></div>
+      <div class="form-field"><label>结束日期</label><input id="mlPredEnd" type="date"></div>
+    </div>
     <div class="btn-group">
       <button class="btn btn-primary btn-sm" onclick="mlPredict()" id="mlPredBtn">预测</button>
       <button class="btn btn-outline btn-sm" onclick="mlBacktest()" id="mlBtBtn">回测</button>
@@ -362,7 +366,28 @@
 <section class="page" id="page-strategy">
   <div class="section-header">
     <h2 class="section-title">回测记录</h2>
-    <button class="btn btn-ghost btn-sm" onclick="loadBtRecords()">刷新</button>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="btCreateFolder()">新建文件夹</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadBtRecords()">刷新</button>
+    </div>
+  </div>
+  <div class="card" style="padding:10px;margin-bottom:8px">
+    <div class="form-row" style="margin-bottom:0">
+      <div class="form-field" style="min-width:180px">
+        <label>文件夹筛选</label>
+        <select id="btFolderFilter" onchange="loadBtRecords()"></select>
+      </div>
+      <div class="form-field" style="min-width:220px">
+        <label>批量移动到</label>
+        <select id="btFolderMoveTarget"></select>
+      </div>
+      <div class="btn-group" style="margin-bottom:0">
+        <button class="btn btn-outline btn-sm" onclick="btMoveSelected()">移动选中</button>
+        <button class="btn btn-outline btn-sm" onclick="btDeleteSelected()">批量删除</button>
+      </div>
+    </div>
+    <div id="btFolderChips" class="bt-folder-chips" style="margin-top:8px"></div>
+    <div id="btRecBatchBar" class="bt-batch-bar" style="display:none"></div>
   </div>
   <div id="btRecLoading" class="empty-state" style="display:none"><span class="spinner"></span>加载中…</div>
   <div id="btRecEmpty" class="empty-state" style="display:none">暂无回测记录，请前往回测页面运行策略</div>

@@ -103,6 +103,23 @@ class BacktestRequest(BaseModel):
     params: dict[str, Any] = Field(default_factory=lambda: {"fast": 5, "slow": 20})
 
 
+class BacktestFolderRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
+
+
+class BacktestCommentRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
+class BacktestBatchDeleteRequest(BaseModel):
+    record_ids: list[int] = Field(default_factory=list)
+
+
+class BacktestBatchMoveRequest(BaseModel):
+    record_ids: list[int] = Field(default_factory=list)
+    folder_id: int | None = None
+
+
 class TradeRecord(BaseModel):
     entry_date: str
     entry_price: float
@@ -1142,12 +1159,15 @@ async def train_model(req: TrainModelRequest):
     """Train a timing model (Lasso or LightGBM)."""
     if _strategy_svc is None:
         raise HTTPException(503, "StrategyService not available")
-    return await _strategy_svc.train_model(
-        symbol=req.symbol, model_type=req.model_type,
-        label_col=req.label_col, forward_period=req.forward_period,
-        train_ratio=req.train_ratio, start=req.start, end=req.end,
-        params=req.params,
-    )
+    try:
+        return await _strategy_svc.train_model(
+            symbol=req.symbol, model_type=req.model_type,
+            label_col=req.label_col, forward_period=req.forward_period,
+            train_ratio=req.train_ratio, start=req.start, end=req.end,
+            params=req.params,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @app.post("/api/v1/ml/walk-forward", tags=["ML"])
@@ -1155,13 +1175,16 @@ async def model_walk_forward(req: ModelWFRequest):
     """Run walk-forward ML model validation."""
     if _strategy_svc is None:
         raise HTTPException(503, "StrategyService not available")
-    return await _strategy_svc.model_walk_forward(
-        symbol=req.symbol, model_type=req.model_type,
-        label_col=req.label_col, forward_period=req.forward_period,
-        train_days=req.train_days, test_days=req.test_days,
-        step_days=req.step_days, start=req.start, end=req.end,
-        params=req.params,
-    )
+    try:
+        return await _strategy_svc.model_walk_forward(
+            symbol=req.symbol, model_type=req.model_type,
+            label_col=req.label_col, forward_period=req.forward_period,
+            train_days=req.train_days, test_days=req.test_days,
+            step_days=req.step_days, start=req.start, end=req.end,
+            params=req.params,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @app.post("/api/v1/ml/predict", tags=["ML"])
@@ -1336,6 +1359,99 @@ async def delete_backtest_record(record_id: int):
     return {"deleted": record_id}
 
 
+@app.post("/api/v1/backtest/history/batch-delete", tags=["Strategy"])
+async def batch_delete_backtest_records(req: BacktestBatchDeleteRequest):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    return await _strategy_svc.batch_delete_backtest_records(req.record_ids)
+
+
+@app.post("/api/v1/backtest/history/batch-move", tags=["Strategy"])
+async def batch_move_backtest_records(req: BacktestBatchMoveRequest):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    try:
+        return await _strategy_svc.move_backtest_records(req.record_ids, req.folder_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.get("/api/v1/backtest/folders", tags=["Strategy"])
+async def list_backtest_folders():
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    return {"folders": await _strategy_svc.list_backtest_folders()}
+
+
+@app.post("/api/v1/backtest/folders", tags=["Strategy"])
+async def create_backtest_folder(req: BacktestFolderRequest):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    try:
+        return await _strategy_svc.create_backtest_folder(req.name)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.put("/api/v1/backtest/folders/{folder_id}", tags=["Strategy"])
+async def update_backtest_folder(folder_id: int, req: BacktestFolderRequest):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    try:
+        return await _strategy_svc.update_backtest_folder(folder_id, req.name)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/v1/backtest/folders/{folder_id}", tags=["Strategy"])
+async def delete_backtest_folder(folder_id: int):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    try:
+        return await _strategy_svc.delete_backtest_folder(folder_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.get("/api/v1/backtest/history/{record_id}/comments", tags=["Strategy"])
+async def list_backtest_comments(record_id: int):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    return {"comments": await _strategy_svc.list_backtest_comments(record_id)}
+
+
+@app.post("/api/v1/backtest/history/{record_id}/comments", tags=["Strategy"])
+async def create_backtest_comment(record_id: int, req: BacktestCommentRequest):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    try:
+        return await _strategy_svc.create_backtest_comment(record_id, req.content)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.put("/api/v1/backtest/comments/{comment_id}", tags=["Strategy"])
+async def update_backtest_comment(comment_id: int, req: BacktestCommentRequest):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    try:
+        return await _strategy_svc.update_backtest_comment(comment_id, req.content)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.delete("/api/v1/backtest/comments/{comment_id}", tags=["Strategy"])
+async def delete_backtest_comment(comment_id: int):
+    if _strategy_svc is None:
+        raise HTTPException(503, "StrategyService not available")
+    try:
+        return await _strategy_svc.delete_backtest_comment(comment_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
 @app.post("/api/v1/backtest/gp", tags=["Strategy"])
 async def backtest_gp(req: GPBacktestRequest):
     """Backtest a saved GP expression on a symbol."""
@@ -1394,14 +1510,17 @@ async def run_pipeline(req: PipelineRequest):
     """One-click end-to-end pipeline: factors → labels → select → train → WF → signal."""
     if _strategy_svc is None:
         raise HTTPException(503, "StrategyService not available")
-    return await _strategy_svc.run_pipeline(
-        symbol=req.symbol, model_type=req.model_type,
-        label_col=req.label_col, forward_period=req.forward_period,
-        train_ratio=req.train_ratio,
-        wf_train_days=req.wf_train_days, wf_test_days=req.wf_test_days,
-        wf_step_days=req.wf_step_days,
-        start=req.start, end=req.end, model_params=req.model_params,
-    )
+    try:
+        return await _strategy_svc.run_pipeline(
+            symbol=req.symbol, model_type=req.model_type,
+            label_col=req.label_col, forward_period=req.forward_period,
+            train_ratio=req.train_ratio,
+            wf_train_days=req.wf_train_days, wf_test_days=req.wf_test_days,
+            wf_step_days=req.wf_step_days,
+            start=req.start, end=req.end, model_params=req.model_params,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 # ---------- Backtest ----------
@@ -1484,11 +1603,12 @@ async def optimize_strategy(req: OptimizeRequest):
 @app.get("/api/v1/backtest/history", tags=["Strategy"])
 async def backtest_history(
     strategy_id: str = Query(None, description="Filter by strategy ID"),
+    folder_id: int | None = Query(None, description="Filter by folder ID"),
     limit: int = Query(20, ge=1, le=100),
 ):
     if _strategy_svc is None:
         raise HTTPException(503, "StrategyService not available")
-    rows = await _strategy_svc.get_backtest_history(strategy_id, limit)
+    rows = await _strategy_svc.get_backtest_history(strategy_id, limit, folder_id)
     return {"history": rows}
 
 

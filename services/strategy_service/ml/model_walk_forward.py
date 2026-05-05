@@ -162,7 +162,8 @@ class ModelWalkForward:
                 pipe.fit(X, y)
                 return pipe
             else:
-                import lightgbm as lgb
+                from .timing_model import ensure_lightgbm_available
+                lgb = ensure_lightgbm_available()
                 default_p = {
                     "objective": "binary", "verbosity": -1, "n_estimators": 100,
                     "max_depth": 4, "learning_rate": 0.05, "num_leaves": 15,
@@ -174,6 +175,8 @@ class ModelWalkForward:
                 clf = lgb.LGBMClassifier(**default_p)
                 clf.fit(X, y)
                 return clf
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.warning("Model fitting failed: {}", e)
             return None

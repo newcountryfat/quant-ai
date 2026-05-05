@@ -51,10 +51,33 @@ def init_schema(db_path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(_SCHEMA_SQL)
+    _run_migrations(conn)
     conn.commit()
     conn.close()
     logger.info("Database schema initialized at {}", path)
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row[1] == column for row in rows)
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    if not _column_exists(conn, "backtest_results", "folder_id"):
+        conn.execute(
+            "ALTER TABLE backtest_results ADD COLUMN folder_id INTEGER "
+            "REFERENCES backtest_folders(id) ON DELETE SET NULL"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_backtest_results_folder_id "
+        "ON backtest_results(folder_id, run_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_backtest_comments_record_id "
+        "ON backtest_comments(record_id, updated_at)"
+    )
 
 
 _SCHEMA_SQL = """
@@ -152,8 +175,24 @@ CREATE TABLE IF NOT EXISTS backtest_results (
     max_dd          REAL,
     win_rate        REAL,
     trade_count     INTEGER,
+    folder_id       INTEGER REFERENCES backtest_folders(id) ON DELETE SET NULL,
     run_at          TEXT NOT NULL DEFAULT (datetime('now')),
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS backtest_folders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS backtest_comments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id   INTEGER NOT NULL REFERENCES backtest_results(id) ON DELETE CASCADE,
+    content     TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Alerts

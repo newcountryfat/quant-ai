@@ -19,6 +19,7 @@ cachetools>=5.3.0
 
 # ML & Optimization
 scikit-learn>=1.4.0
+lightgbm>=4.6.0
 optuna>=3.0.0
 deap>=1.4.0
 
