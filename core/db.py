@@ -78,6 +78,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_backtest_comments_record_id "
         "ON backtest_comments(record_id, updated_at)"
     )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_strategy_daily_snapshots_key_date "
+        "ON strategy_daily_snapshots(strategy_key, snapshot_date DESC)"
+    )
 
 
 _SCHEMA_SQL = """
@@ -193,6 +197,24 @@ CREATE TABLE IF NOT EXISTS backtest_comments (
     content     TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS strategy_daily_snapshots (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_key    TEXT NOT NULL,
+    strategy_name   TEXT NOT NULL,
+    strategy_type   TEXT NOT NULL,
+    symbol          TEXT NOT NULL,
+    snapshot_date   TEXT NOT NULL,
+    action          TEXT NOT NULL,
+    signal_value    REAL,
+    probability     REAL,
+    latest_price    REAL,
+    latest_trade_date TEXT,
+    meta_json       TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (strategy_key, symbol, snapshot_date)
 );
 
 -- Alerts

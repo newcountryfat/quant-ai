@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     research_sync_lookback_days: int = Field(default=400, alias="RESEARCH_SYNC_LOOKBACK_DAYS")
     # 增量同步时与最后交易日重叠的自然日范围
     research_sync_overlap_days: int = Field(default=5, alias="RESEARCH_SYNC_OVERLAP_DAYS")
+    # 训练前允许的最大数据陈旧自然日
+    training_data_max_stale_days: int = Field(default=7, alias="TRAINING_DATA_MAX_STALE_DAYS")
     # 是否启用市场宽度日更
     market_breadth_sync_enabled: bool = Field(default=True, alias="MARKET_BREADTH_SYNC_ENABLED")
     # 市场宽度日更时间

@@ -30,11 +30,14 @@ class BacktestResult:
 
 class VectorizedBacktester:
     @staticmethod
-    def _positions_from_signals(signals: np.ndarray) -> np.ndarray:
+    def _positions_from_signals(signals: np.ndarray, execution_delay: int = 1) -> np.ndarray:
         raw = np.full(len(signals), np.nan, dtype=float)
         raw[signals == 1] = 1.0
         raw[signals == -1] = 0.0
-        return pd.Series(raw).ffill().fillna(0.0).to_numpy(dtype=float)
+        pos = pd.Series(raw).ffill().fillna(0.0)
+        if execution_delay > 0:
+            pos = pos.shift(execution_delay).fillna(0.0)
+        return pos.to_numpy(dtype=float)
 
     @classmethod
     def run(
@@ -44,6 +47,7 @@ class VectorizedBacktester:
         initial_capital: float = 1_000_000,
         commission: float = 0.001,
         trading_days_per_year: int = 252,
+        execution_delay: int = 1,
     ) -> BacktestResult:
         if "close" not in prices.columns:
             raise ValueError("prices must contain 'close' column")
@@ -54,7 +58,7 @@ class VectorizedBacktester:
             eq = pd.Series(dtype=float)
             return BacktestResult(0.0, 0.0, 0.0, 0.0, 0.0, 0, eq)
 
-        w = cls._positions_from_signals(sig)
+        w = cls._positions_from_signals(sig, execution_delay=execution_delay)
         mret = np.zeros(n, dtype=float)
         mret[1:] = price[1:] / price[:-1] - 1.0
 

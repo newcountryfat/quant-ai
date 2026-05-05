@@ -25,7 +25,6 @@
   <button class="tab-btn" data-tab="models">模型</button>
   <button class="tab-btn" data-tab="backtest">回测</button>
   <button class="tab-btn" data-tab="strategy">记录</button>
-  <button class="tab-btn" data-tab="trading">交易</button>
   <button class="tab-btn" data-tab="report">报告</button>
 </nav>
 
@@ -33,7 +32,7 @@
 <section class="page active" id="page-dashboard">
   <div class="section-header">
     <h2 class="section-title">系统总览</h2>
-    <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">刷新</button>
+    <button class="btn btn-ghost btn-sm" onclick="loadDashboard(true)">刷新</button>
   </div>
   <div class="dash-health" id="dashHealth"></div>
   <div class="dash-grid" id="dashGrid"></div>
@@ -49,6 +48,14 @@
   <div id="dashActionResult" style="display:none" class="card" style="margin-top:8px">
     <div class="card-title">操作结果</div>
     <pre id="dashActionPre" style="font-size:.76rem;color:var(--t2);white-space:pre-wrap;max-height:200px;overflow-y:auto"></pre>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span class="card-title" style="margin-bottom:0">收藏模型下一交易日操作建议</span>
+      <span class="section-subtitle">按标的归类，自动补齐最新数据后刷新</span>
+    </div>
+    <div id="dashStrategyList"></div>
+    <div id="dashStrategyEmpty" class="empty-state" style="display:none;padding:16px">暂无已保存模型或 GP 策略</div>
   </div>
 </section>
 
@@ -327,8 +334,9 @@
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <span class="card-title" style="margin-bottom:0">已保存 GP 表达式</span>
-      <button class="btn btn-ghost btn-sm" onclick="mlLoadGpList()">刷新</button>
+      <span class="section-subtitle">按标的归类展示</span>
     </div>
+    <div class="btn-group"><button class="btn btn-ghost btn-sm" onclick="mlLoadGpList()">刷新</button></div>
     <div id="mlGpSavedList"></div>
     <div id="mlGpSavedEmpty" class="empty-state" style="display:none;padding:16px">暂无已保存表达式，请勾选"保存 Top5"后挖掘</div>
   </div>
@@ -336,8 +344,9 @@
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <span class="card-title" style="margin-bottom:0">已训练模型</span>
-      <button class="btn btn-ghost btn-sm" onclick="mlLoadModels()">刷新</button>
+      <span class="section-subtitle">按标的归类展示</span>
     </div>
+    <div class="btn-group"><button class="btn btn-ghost btn-sm" onclick="mlLoadModels()">刷新</button></div>
     <div id="mlModelList"></div>
     <div id="mlModelEmpty" class="empty-state" style="display:none;padding:16px">暂无已训练模型</div>
   </div>
@@ -438,21 +447,12 @@
   </div>
 </section>
 
-<!-- ===== 交易 ===== -->
-<section class="page" id="page-trading">
-  <div class="card"><div class="card-title">模拟账户</div><div class="xq-meta" id="ptAccount"></div></div>
-  <div class="form-row">
-    <div class="form-field"><label>股票代码</label><input id="ptSymbol" value="000001"></div>
-    <div class="form-field"><label>方向</label><select id="ptSide"><option value="buy">买入</option><option value="sell">卖出</option></select></div>
-    <div class="form-field"><label>数量(股)</label><input id="ptQty" type="number" value="100" min="1"></div>
-    <button class="btn btn-primary" onclick="placeOrder()" id="ptBtn">下单</button>
-  </div>
-  <div class="card" style="margin-top:2px"><div class="card-title">持仓</div><div class="table-wrap"><table class="stock-table" id="ptPositions"><tbody></tbody></table></div></div>
-  <div class="card"><div class="card-title">最近订单</div><div class="table-wrap"><table class="stock-table" id="ptOrders"><tbody></tbody></table></div></div>
-</section>
-
 <!-- ===== 报告 ===== -->
 <section class="page" id="page-report">
+  <div class="section-header">
+    <h2 class="section-title">日报</h2>
+    <span class="section-subtitle">更适合快速扫读的表格与分区视图</span>
+  </div>
   <div class="btn-group"><button class="btn btn-primary btn-sm" onclick="generateReport()">生成最新日报</button></div>
   <div class="report-content" id="reportContent">点击「生成最新日报」查看报告</div>
 </section>
@@ -469,8 +469,7 @@
 <script src="/static/js/models.js?v=6"></script>
 <script src="/static/js/strategy.js?v=5"></script>
 <script src="/static/js/backtest.js?v=2"></script>
-<script src="/static/js/trading.js?v=2"></script>
-<script src="/static/js/report.js?v=2"></script>
+<script src="/static/js/report.js?v=3"></script>
 <script src="/static/js/init.js?v=2"></script>
 </body>
 </html>

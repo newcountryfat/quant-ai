@@ -138,11 +138,13 @@ class SchedulerService:
         try:
             index_result = await self._data_svc.sync_research_universe_incremental(
                 asset_type="index",
+                watchlist_only=True,
                 default_lookback_days=settings.research_sync_lookback_days,
                 overlap_days=settings.research_sync_overlap_days,
             )
             etf_result = await self._data_svc.sync_research_universe_incremental(
                 asset_type="etf",
+                watchlist_only=True,
                 default_lookback_days=settings.research_sync_lookback_days,
                 overlap_days=settings.research_sync_overlap_days,
             )

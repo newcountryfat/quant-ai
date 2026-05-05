@@ -395,13 +395,16 @@ async function loadDetailSignals() {
       body: JSON.stringify({ model_id: best.model_id, symbol: App.currentDetail, start: '2026-03-01' }),
     });
 
-    const preds = (pred.predictions || []).slice(-5);
-    let html = `<div style="font-size:.7rem;color:var(--t3);margin-bottom:4px">模型: ${best.model_type} | AUC: ${(best.test_metrics?.auc||0).toFixed(3)}</div>`;
-    preds.forEach(p => {
-      const isLong = p.prediction === 1;
+    const allPreds = pred.predictions || [];
+    const preds = allPreds.slice(-5);
+    let html = `<div style="font-size:.7rem;color:var(--t3);margin-bottom:4px">下一交易日操作建议 · 模型: ${best.model_type} | AUC: ${(best.test_metrics?.auc||0).toFixed(3)}</div>`;
+    preds.forEach((p, idx) => {
+      const globalIdx = allPreds.length - preds.length + idx;
+      const prev = globalIdx > 0 ? allPreds[globalIdx - 1] : null;
+      const action = nextTradeActionFromPrediction(p.prediction, prev?.prediction);
       html += `<div class="signal-row">
         <span class="signal-date">${p.date}</span>
-        <span class="signal-badge ${isLong ? 'long' : 'short'}">${isLong ? '看多' : '看空'}</span>
+        <span class="signal-badge ${actionBadgeClass(action)}">${action}</span>
         <span class="signal-prob">${p.probability != null ? (p.probability * 100).toFixed(1) + '%' : '--'}</span>
       </div>`;
     });
@@ -427,13 +430,14 @@ async function runDetailPipeline() {
     const sig = r.latest_signal || {};
     const tr = r.train_result || {};
     const tm = tr.test_metrics || {};
-    let html = `<div style="font-size:.7rem;color:var(--t3);margin-bottom:4px">模型: ${tr.model_type || 'lightgbm'} | AUC: ${(tm.auc||0).toFixed(3)} | F1: ${(tm.f1||0).toFixed(3)}</div>`;
+    let html = `<div style="font-size:.7rem;color:var(--t3);margin-bottom:4px">下一交易日操作建议 · 模型: ${tr.model_type || 'lightgbm'} | AUC: ${(tm.auc||0).toFixed(3)} | F1: ${(tm.f1||0).toFixed(3)}</div>`;
     if (sig.predictions?.length) {
-      sig.predictions.forEach(p => {
-        const isLong = p.prediction === 1;
+      sig.predictions.forEach((p, idx) => {
+        const prev = idx > 0 ? sig.predictions[idx - 1] : null;
+        const action = nextTradeActionFromPrediction(p.prediction, prev?.prediction);
         html += `<div class="signal-row">
           <span class="signal-date">${p.date}</span>
-          <span class="signal-badge ${isLong ? 'long' : 'short'}">${isLong ? '看多' : '看空'}</span>
+          <span class="signal-badge ${actionBadgeClass(action)}">${action}</span>
           <span class="signal-prob">${p.probability != null ? (p.probability * 100).toFixed(1) + '%' : '--'}</span>
         </div>`;
       });

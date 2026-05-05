@@ -15,6 +15,7 @@ const App = {
   detailDailyRows: [],
   factorLibrary: [],
   trainedModels: [],
+  watchlistNameMap: {},
 };
 
 const API = '';
@@ -48,8 +49,28 @@ const STRAT_NAMES = { ma_cross:'MA均线交叉', rsi_reversal:'RSI超买超卖�
 /* ===== API helper ===== */
 async function api(path, opts = {}) {
   const r = await fetch(API + path, opts);
-  if (!r.ok) throw new Error(`API ${r.status}`);
-  return r.json();
+  const isJson = (r.headers.get('content-type') || '').includes('application/json');
+  const payload = isJson ? await r.json() : null;
+  if (!r.ok) {
+    const detail = payload && typeof payload.detail === 'string' ? payload.detail : '';
+    throw new Error(detail || `API ${r.status}`);
+  }
+  return payload ?? {};
+}
+
+async function ensureWatchlistNameMap(force = false) {
+  if (!force && Object.keys(App.watchlistNameMap || {}).length) return App.watchlistNameMap;
+  try {
+    const payload = await api('/api/v1/watchlist');
+    const map = {};
+    (payload.items || []).forEach(item => {
+      if (item?.symbol && item?.name) map[item.symbol] = item.name;
+    });
+    App.watchlistNameMap = map;
+  } catch (e) {
+    App.watchlistNameMap = App.watchlistNameMap || {};
+  }
+  return App.watchlistNameMap;
 }
 
 /* ===== Toast ===== */
@@ -69,10 +90,9 @@ function switchTab(name, skip) {
   if (btn) btn.classList.add('active');
   const pg = document.getElementById('page-' + name);
   if (pg) pg.classList.add('active');
-  if (name === 'dashboard' && !skip) loadDashboard();
+  if (name === 'dashboard' && !skip) loadDashboard(true);
   if (name === 'stocks' && !skip && App.allStocks.length === 0) loadStocks();
   if (name === 'watchlist') loadWatchlist();
-  if (name === 'trading') loadPaperAccount();
   if (name === 'backtest') { /* config only, no history */ }
   if (name === 'strategy') loadBtRecords();
   if (name === 'research' && !skip) loadResearchPage();
@@ -177,6 +197,44 @@ function fV(v) {
   if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿';
   if (v >= 1e4) return (v / 1e4).toFixed(0) + '万';
   return v.toFixed(0);
+}
+
+function normalizedPositionFromPrediction(prediction) {
+  if (prediction == null) return null;
+  return Number(prediction) === 1 ? 1 : 0;
+}
+
+function normalizedPositionFromDirection(direction) {
+  if (direction == null) return null;
+  return Number(direction) > 0 ? 1 : 0;
+}
+
+function nextTradeActionFromPosition(position, previousPosition = null) {
+  if (position == null) return '无数据';
+  if (previousPosition == null) return position > 0 ? '买入' : '继续空仓';
+  if (position > previousPosition) return '买入';
+  if (position < previousPosition) return '卖出';
+  return position > 0 ? '继续持仓' : '继续空仓';
+}
+
+function actionBadgeClass(action) {
+  if (action === '买入' || action === '继续持仓') return 'long';
+  if (action === '卖出') return 'short';
+  return 'neutral';
+}
+
+function nextTradeActionFromPrediction(prediction, previousPrediction = null) {
+  return nextTradeActionFromPosition(
+    normalizedPositionFromPrediction(prediction),
+    normalizedPositionFromPrediction(previousPrediction),
+  );
+}
+
+function nextTradeActionFromDirection(direction, previousDirection = null) {
+  return nextTradeActionFromPosition(
+    normalizedPositionFromDirection(direction),
+    normalizedPositionFromDirection(previousDirection),
+  );
 }
 
 function today() { return new Date().toISOString().slice(0, 10); }

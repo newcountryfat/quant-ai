@@ -1,0 +1,108 @@
+{
+  "model_id": "lightgbm_sh513180_label_dir_5_20260505_200821",
+  "model_type": "lightgbm",
+  "symbol": "sh513180",
+  "label_col": "label_dir_5",
+  "n_features": 29,
+  "n_train": 251,
+  "n_test": 63,
+  "train_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "auc": 1.0,
+    "log_loss": 0.103284
+  },
+  "test_metrics": {
+    "accuracy": 0.412698,
+    "precision": 0.396552,
+    "recall": 0.92,
+    "f1": 0.554217,
+    "auc": 0.676842,
+    "log_loss": 1.329083
+  },
+  "feature_importance": [
+    {
+      "feature": "minus_di",
+      "importance": 122
+    },
+    {
+      "feature": "ma_10",
+      "importance": 93
+    },
+    {
+      "feature": "atr",
+      "importance": 81
+    },
+    {
+      "feature": "ret_1",
+      "importance": 74
+    },
+    {
+      "feature": "co_range",
+      "importance": 68
+    },
+    {
+      "feature": "plus_di",
+      "importance": 63
+    },
+    {
+      "feature": "adx",
+      "importance": 61
+    },
+    {
+      "feature": "obv",
+      "importance": 59
+    },
+    {
+      "feature": "macd_hist",
+      "importance": 57
+    },
+    {
+      "feature": "ma_20",
+      "importance": 56
+    },
+    {
+      "feature": "roc_5",
+      "importance": 55
+    },
+    {
+      "feature": "rvol_5",
+      "importance": 51
+    },
+    {
+      "feature": "cci",
+      "importance": 46
+    },
+    {
+      "feature": "ma_60",
+      "importance": 45
+    },
+    {
+      "feature": "rsi_14",
+      "importance": 42
+    },
+    {
+      "feature": "ema_60",
+      "importance": 40
+    },
+    {
+      "feature": "rvol_10",
+      "importance": 37
+    },
+    {
+      "feature": "bb_width",
+      "importance": 35
+    },
+    {
+      "feature": "vol_ratio",
+      "importance": 31
+    },
+    {
+      "feature": "hl_range",
+      "importance": 31
+    }
+  ],
+  "created_at": "2026-05-05T20:08:21.379955"
+}

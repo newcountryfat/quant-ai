@@ -242,17 +242,7 @@ async function toggleBtRecDetail(idx) {
     if (!params.commission) params.commission = 0.001;
 
     const [r, commentPayload] = await Promise.all([
-      api('/api/v1/backtest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          strategy_id: h.strategy_id,
-          symbol: h.symbol,
-          start: h.start_date || '2025-01-01',
-          end: h.end_date || today(),
-          params,
-        }),
-      }),
+      btFetchRecordDetail(h, params),
       api(`/api/v1/backtest/history/${h.id}/comments`),
     ]);
 
@@ -261,6 +251,69 @@ async function toggleBtRecDetail(idx) {
   } catch (e) {
     detailEl.innerHTML = '<div style="color:var(--r);padding:8px;text-align:center">回测失败</div>';
   }
+}
+
+async function btFetchRecordDetail(record, params) {
+  const start = record.start_date || '2025-01-01';
+  const end = record.end_date || today();
+  if (record.strategy_id === 'custom_expr') {
+    return api('/api/v1/ml/custom-expression/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expression: params.expression || '',
+        symbol: record.symbol,
+        start,
+        end,
+        initial_capital: params.initial_capital || 1000000,
+        commission: params.commission || 0.001,
+        save_result: false,
+      }),
+    });
+  }
+  if ((record.strategy_id || '').startsWith('gp:')) {
+    return api('/api/v1/backtest/gp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gp_id: (params.gp_id || record.strategy_id.slice(3)),
+        symbol: record.symbol,
+        start,
+        end,
+        initial_capital: params.initial_capital || 1000000,
+        commission: params.commission || 0.001,
+        save_result: false,
+      }),
+    });
+  }
+  if ((record.strategy_id || '').startsWith('ml:')) {
+    return api('/api/v1/backtest/ml', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model_id: (params.model_id || record.strategy_id.slice(3)),
+        symbol: record.symbol,
+        start,
+        end,
+        initial_capital: params.initial_capital || 1000000,
+        commission: params.commission || 0.001,
+        threshold: params.threshold ?? 0.5,
+        save_result: false,
+      }),
+    });
+  }
+  return api('/api/v1/backtest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      strategy_id: record.strategy_id,
+      symbol: record.symbol,
+      start,
+      end,
+      params,
+      save_result: false,
+    }),
+  });
 }
 
 function renderRecDetail(container, r, params, meta) {
@@ -299,14 +352,14 @@ function renderRecDetail(container, r, params, meta) {
 function renderBtComments(recordId) {
   const comments = _btCommentsCache[recordId] || [];
   return `
-    <div class="bt-comment-box">
+    <div class="bt-comment-box" onclick="event.stopPropagation()">
       <div class="bt-comment-head">
         <div class="card-title" style="margin-bottom:0">评论 / 复盘想法</div>
         <span style="font-size:.72rem;color:var(--t3)">${comments.length} 条</span>
       </div>
       <textarea id="btCommentInput-${recordId}" class="bt-comment-input" placeholder="记录这次回测时的想法、假设、市场背景..."></textarea>
       <div class="btn-group" style="margin:8px 0 0">
-        <button class="btn btn-primary btn-sm" onclick="btCreateComment(${recordId})">添加评论</button>
+        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();btCreateComment(${recordId})">添加评论</button>
       </div>
       <div class="bt-comment-list">
         ${comments.length ? comments.map(item => renderBtCommentItem(item)).join('') : '<div class="empty-state" style="padding:18px 12px">还没有评论，适合把当时的判断记下来</div>'}
@@ -320,8 +373,8 @@ function renderBtCommentItem(item) {
     <div class="bt-comment-meta">
       <span>${(item.updated_at || '').replace('T', ' ').slice(0, 16)}</span>
       <div style="display:flex;align-items:center;gap:6px">
-        <button class="btn btn-ghost btn-sm" onclick="btEditComment(${item.id})">编辑</button>
-        <button class="btn btn-ghost btn-sm" onclick="btDeleteComment(${item.id})">删除</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();btEditComment(${item.id})">编辑</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();btDeleteComment(${item.id})">删除</button>
       </div>
     </div>
     <div class="bt-comment-content" id="btCommentContent-${item.id}">${btEscapeHtml(item.content).replaceAll('\n', '<br>')}</div>
@@ -541,7 +594,7 @@ async function btReloadComments(recordId) {
       try { params = JSON.parse(meta.params_json || '{}'); } catch (e) {}
       if (!params.initial_capital) params.initial_capital = meta.initial_capital || 1000000;
       if (!params.commission) params.commission = 0.001;
-      const summaryHtml = detail.innerHTML.split('<div class="bt-comment-box">')[0];
+      const summaryHtml = detail.innerHTML.split('<div class="bt-comment-box"')[0];
       detail.innerHTML = summaryHtml + renderBtComments(recordId);
     }
   }

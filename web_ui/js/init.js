@@ -8,5 +8,5 @@ document.querySelectorAll('.tab-btn').forEach(b => {
 initChartTabs();
 setDates();
 loadHealth();
-loadDashboard();
+loadDashboard(true);
 setInterval(loadHealth, 30000);

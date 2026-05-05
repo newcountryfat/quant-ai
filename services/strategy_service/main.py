@@ -47,6 +47,8 @@ STRATEGY_CATALOG: dict[str, dict[str, Any]] = {
     },
 }
 
+BACKTEST_DEDUPE_WINDOW_SECONDS = 60
+
 
 class StrategyService:
     def __init__(self, bus: LocalEventBus) -> None:
@@ -111,6 +113,68 @@ class StrategyService:
         for col in ("open", "high", "low", "close", "volume"):
             df[col] = pd.to_numeric(df[col], errors="coerce")
         return df.dropna(how="any")
+
+    def _resolve_expected_data_end(self, end: str | date | None) -> date:
+        if end is None:
+            return date.today()
+        if isinstance(end, date):
+            end_date = end
+        else:
+            end_date = datetime.fromisoformat(str(end)).date()
+        return min(end_date, date.today())
+
+    def _get_symbol_data_guard(self, symbol: str) -> dict[str, Any]:
+        with get_db() as conn:
+            quote_row = conn.execute(
+                "SELECT MAX(trade_date) AS max_date FROM daily_quotes WHERE symbol = ?",
+                (symbol,),
+            ).fetchone()
+            asset_row = conn.execute(
+                "SELECT asset_type FROM asset_universe WHERE symbol = ?",
+                (symbol,),
+            ).fetchone()
+            watchlist_row = conn.execute(
+                "SELECT 1 AS in_watchlist FROM watchlist WHERE symbol = ? LIMIT 1",
+                (symbol,),
+            ).fetchone()
+        return {
+            "latest_trade_date": quote_row["max_date"] if quote_row else None,
+            "asset_type": asset_row["asset_type"] if asset_row else None,
+            "in_watchlist": bool(watchlist_row),
+        }
+
+    def _ensure_fresh_data_for_training(
+        self,
+        symbol: str,
+        *,
+        end: str | date | None,
+        action_label: str,
+    ) -> None:
+        guard = self._get_symbol_data_guard(symbol)
+        latest_trade_date = guard["latest_trade_date"]
+        if not latest_trade_date:
+            asset_type = guard["asset_type"]
+            if asset_type in {"index", "etf"} and not guard["in_watchlist"]:
+                raise ValueError(f"{symbol} 没有可用日线数据，该 ETF/指数未加入自选，请先加入自选或先补数据再{action_label}")
+            raise ValueError(f"{symbol} 没有可用日线数据，请先补数据再{action_label}")
+
+        latest_date = datetime.fromisoformat(str(latest_trade_date)).date()
+        expected_end = self._resolve_expected_data_end(end)
+        stale_days = (expected_end - latest_date).days
+        if stale_days <= settings.training_data_max_stale_days:
+            return
+
+        asset_type = guard["asset_type"]
+        is_index_or_etf = asset_type in {"index", "etf"}
+        if is_index_or_etf and not guard["in_watchlist"]:
+            raise ValueError(
+                f"{symbol} 最新数据日期为 {latest_date.isoformat()}，距离请求截止日 {expected_end.isoformat()} "
+                f"已滞后 {stale_days} 天。该 ETF/指数未加入自选，自动更新不会覆盖它，请先加入自选或先补数据再{action_label}"
+            )
+        raise ValueError(
+            f"{symbol} 最新数据日期为 {latest_date.isoformat()}，距离请求截止日 {expected_end.isoformat()} "
+            f"已滞后 {stale_days} 天，请先补数据再{action_label}"
+        )
 
     # ---------- factors ----------
 
@@ -187,6 +251,7 @@ class StrategyService:
         self, strategy_id: str, symbol: str,
         start: str | date, end: str | date,
         params: dict[str, Any] | None = None,
+        save_result: bool = True,
     ) -> BacktestResult:
         params = params or STRATEGY_CATALOG.get(strategy_id, {}).get("default_params", {})
 
@@ -202,18 +267,48 @@ class StrategyService:
             )
 
         result = await asyncio.to_thread(job)
-        self._save_backtest_result(strategy_id, symbol, str(start), str(end), params, result)
+        if save_result:
+            self._save_backtest_result(strategy_id, symbol, str(start), str(end), params, result)
         logger.info("Backtest done {}:{} return={:.4f} trades={}", strategy_id, symbol, result.total_return, result.trade_count)
         return result
 
+    def _normalize_backtest_params(self, params: dict[str, Any] | None) -> dict[str, Any]:
+        return json.loads(json.dumps(params or {}, sort_keys=True, ensure_ascii=False))
+
+    def _find_recent_duplicate_backtest(
+        self,
+        strategy_id: str,
+        symbol: str,
+        start: str,
+        end: str,
+        params_json: str,
+    ) -> dict[str, Any] | None:
+        threshold = datetime.now().timestamp() - BACKTEST_DEDUPE_WINDOW_SECONDS
+        threshold_iso = datetime.fromtimestamp(threshold).isoformat()
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT id, run_at FROM backtest_results "
+                "WHERE strategy_id = ? AND symbol = ? AND start_date = ? AND end_date = ? AND params_json = ? "
+                "AND run_at >= ? "
+                "ORDER BY run_at DESC LIMIT 1",
+                (strategy_id, symbol, start, end, params_json, threshold_iso),
+            ).fetchone()
+        return dict(row) if row else None
+
     def _save_backtest_result(self, strategy_id: str, symbol: str, start: str, end: str, params: dict, result: BacktestResult) -> None:
         try:
+            normalized_params = self._normalize_backtest_params(params)
+            params_json = json.dumps(normalized_params, sort_keys=True, ensure_ascii=False)
+            duplicate = self._find_recent_duplicate_backtest(strategy_id, symbol, start, end, params_json)
+            if duplicate:
+                logger.info("Skip duplicate backtest record {}:{} existing_id={}", strategy_id, symbol, duplicate["id"])
+                return
             with get_db() as conn:
                 conn.execute(
                     "INSERT INTO backtest_results (strategy_id, symbol, start_date, end_date, params_json, "
                     "total_return, annual_return, sharpe, max_dd, win_rate, trade_count, run_at) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (strategy_id, symbol, start, end, json.dumps(params),
+                    (strategy_id, symbol, start, end, params_json,
                      result.total_return, result.annual_return, result.sharpe_ratio,
                      result.max_drawdown, result.win_rate, result.trade_count, datetime.now().isoformat()),
                 )
@@ -771,6 +866,7 @@ class StrategyService:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         def _job() -> dict[str, Any]:
+            self._ensure_fresh_data_for_training(symbol, end=end, action_label="训练")
             df = self._load_ohlcv(symbol, start=start, end=end)
             if df.empty:
                 return {"error": "no data"}
@@ -809,6 +905,7 @@ class StrategyService:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         def _job() -> dict[str, Any]:
+            self._ensure_fresh_data_for_training(symbol, end=end, action_label="训练")
             df = self._load_ohlcv(symbol, start=start, end=end)
             if df.empty:
                 return {"error": "no data"}
@@ -870,6 +967,7 @@ class StrategyService:
         end: str | date | None = None,
     ) -> dict[str, Any]:
         def _job() -> dict[str, Any]:
+            self._ensure_fresh_data_for_training(symbol, end=end, action_label="训练")
             df = self._load_ohlcv(symbol, start=start, end=end)
             if df.empty:
                 return {"error": "no data"}
@@ -1018,6 +1116,7 @@ class StrategyService:
         end: str | date | None = None,
         initial_capital: float = 1_000_000,
         commission: float = 0.001,
+        save_result: bool = True,
     ) -> BacktestResult:
         end = end or date.today().isoformat()
 
@@ -1036,8 +1135,15 @@ class StrategyService:
             )
 
         result = await asyncio.to_thread(_job)
-        self._save_backtest_result(f"custom_expr", symbol, str(start), str(end),
-                                   {"expression": expression}, result)
+        if save_result:
+            self._save_backtest_result(
+                "custom_expr",
+                symbol,
+                str(start),
+                str(end),
+                {"expression": expression, "initial_capital": initial_capital, "commission": commission},
+                result,
+            )
         return result
 
     # ================================================================
@@ -1052,6 +1158,7 @@ class StrategyService:
         end: str | date | None = None,
         initial_capital: float = 1_000_000,
         commission: float = 0.001,
+        save_result: bool = True,
     ) -> BacktestResult:
         end = end or date.today().isoformat()
 
@@ -1069,7 +1176,15 @@ class StrategyService:
             )
 
         result = await asyncio.to_thread(_job)
-        self._save_backtest_result(f"gp:{gp_id}", symbol, str(start), str(end), {"gp_id": gp_id}, result)
+        if save_result:
+            self._save_backtest_result(
+                f"gp:{gp_id}",
+                symbol,
+                str(start),
+                str(end),
+                {"gp_id": gp_id, "initial_capital": initial_capital, "commission": commission},
+                result,
+            )
         logger.info("GP backtest done {}:{} return={:.4f} trades={}", gp_id, symbol, result.total_return, result.trade_count)
         return result
 
@@ -1082,6 +1197,7 @@ class StrategyService:
         initial_capital: float = 1_000_000,
         commission: float = 0.001,
         threshold: float = 0.5,
+        save_result: bool = True,
     ) -> BacktestResult:
         end = end or date.today().isoformat()
 
@@ -1113,7 +1229,20 @@ class StrategyService:
             )
 
         result = await asyncio.to_thread(_job)
-        self._save_backtest_result(f"ml:{model_id}", symbol, str(start), str(end), {"model_id": model_id, "threshold": threshold}, result)
+        if save_result:
+            self._save_backtest_result(
+                f"ml:{model_id}",
+                symbol,
+                str(start),
+                str(end),
+                {
+                    "model_id": model_id,
+                    "threshold": threshold,
+                    "initial_capital": initial_capital,
+                    "commission": commission,
+                },
+                result,
+            )
         logger.info("ML backtest done {}:{} return={:.4f} trades={}", model_id, symbol, result.total_return, result.trade_count)
         return result
 
@@ -1132,6 +1261,7 @@ class StrategyService:
         model_params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         def _job() -> dict[str, Any]:
+            self._ensure_fresh_data_for_training(symbol, end=end, action_label="训练")
             df = self._load_ohlcv(symbol, start=start, end=end)
             if df.empty:
                 return {"error": "no data"}

@@ -12,11 +12,22 @@ class LabelEngine:
     """Generate forward-looking labels for supervised ML timing models."""
 
     @staticmethod
+    def _next_day_forward_return(close: pd.Series, period: int) -> pd.Series:
+        """Return from T+1 close to T+1+period close.
+
+        This matches the EOD workflow where the signal is observed after T close
+        and execution starts on T+1.
+        """
+        entry = close.shift(-1)
+        exit_ = close.shift(-(period + 1))
+        return exit_ / entry - 1.0
+
+    @staticmethod
     def add_forward_returns(df: pd.DataFrame, periods: list[int] | None = None) -> pd.DataFrame:
         periods = periods or [5, 10, 20]
         out = df.copy()
         for p in periods:
-            out[f"fwd_ret_{p}"] = out["close"].pct_change(periods=p).shift(-p)
+            out[f"fwd_ret_{p}"] = LabelEngine._next_day_forward_return(out["close"], p)
         return out
 
     @staticmethod
@@ -35,7 +46,7 @@ class LabelEngine:
         for p in periods:
             col = f"fwd_ret_{p}"
             if col not in out.columns:
-                out[col] = out["close"].pct_change(periods=p).shift(-p)
+                out[col] = LabelEngine._next_day_forward_return(out["close"], p)
             direction = pd.Series(np.nan, index=out.index)
             mask = out[col].notna()
             direction[mask] = (out.loc[mask, col] > threshold).astype(int)
@@ -52,7 +63,7 @@ class LabelEngine:
         out = df.copy()
         col = f"fwd_ret_{period}"
         if col not in out.columns:
-            out[col] = out["close"].pct_change(periods=period).shift(-period)
+            out[col] = LabelEngine._next_day_forward_return(out["close"], period)
         valid = out[col].dropna()
         if len(valid) < n_buckets * 10:
             out[f"label_bucket_{period}"] = np.nan

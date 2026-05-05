@@ -2,6 +2,34 @@
  * Models page: ML training, walk-forward, GP mining, pipeline, model list, predict, backtest.
  */
 
+function mlGroupBySymbol(items) {
+  const groups = new Map();
+  (items || []).forEach(item => {
+    const key = item.symbol || '未指定标的';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([symbol, rows]) => ({
+      symbol,
+      symbol_name: App.watchlistNameMap?.[symbol] || rows[0]?.symbol_name || symbol,
+      rows,
+    }));
+}
+
+function renderSymbolGroup(group, description, cardsHtml) {
+  return `<section class="symbol-group">
+    <div class="symbol-group-head">
+      <div>
+        <div class="symbol-group-title">${group.symbol}</div>
+        <div class="symbol-group-sub">${group.symbol_name && group.symbol_name !== group.symbol ? `${group.symbol_name} · ` : ''}${description(group.rows)}</div>
+      </div>
+    </div>
+    <div class="symbol-group-body">${cardsHtml(group.rows)}</div>
+  </section>`;
+}
+
 /**
  * Replace x0, x1, ... in a GP expression string with actual factor names.
  * featureCols is an array where index i maps to xi.
@@ -100,12 +128,13 @@ function renderPipelineResult(r) {
 
   const sig = r.latest_signal || {};
   if (sig.predictions?.length) {
-    html += `<div class="pipe-section"><div class="ps-title">最新信号</div>`;
-    sig.predictions.forEach(p => {
-      const isLong = p.prediction === 1;
+    html += `<div class="pipe-section"><div class="ps-title">下一交易日操作建议</div>`;
+    sig.predictions.forEach((p, idx) => {
+      const prev = idx > 0 ? sig.predictions[idx - 1] : null;
+      const action = nextTradeActionFromPrediction(p.prediction, prev?.prediction);
       html += `<div class="signal-row">
         <span class="signal-date">${p.date}</span>
-        <span class="signal-badge ${isLong ? 'long' : 'short'}">${isLong ? '看多' : '看空'}</span>
+        <span class="signal-badge ${actionBadgeClass(action)}">${action}</span>
         <span class="signal-prob">${p.probability != null ? (p.probability * 100).toFixed(1) + '%' : '--'}</span>
       </div>`;
     });
@@ -309,11 +338,15 @@ async function mlLoadGpList() {
   const list = document.getElementById('mlGpSavedList');
   const empty = document.getElementById('mlGpSavedEmpty');
   try {
+    await ensureWatchlistNameMap();
     const r = await api('/api/v1/ml/gp-list');
     const exprs = r.expressions || [];
     if (!exprs.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
     empty.style.display = 'none';
-    list.innerHTML = exprs.map(e => {
+    list.innerHTML = mlGroupBySymbol(exprs).map(group => renderSymbolGroup(
+      group,
+      rows => `共 ${rows.length} 个 GP 表达式，适合对同一标的做横向比较`,
+      rows => rows.map(e => {
       const fc = e.feature_cols || [];
       const translated = gpTranslateExpr(e.expression || '', fc);
       const display = translated.length > 180 ? translated.slice(0, 180) + '…' : translated;
@@ -348,7 +381,8 @@ async function mlLoadGpList() {
           <button class="btn btn-ghost btn-sm" style="font-size:.64rem" onclick="event.stopPropagation();mlOpenGpEval('${e.gp_id}','${e.symbol||'sh000300'}')">评估</button>
         </div>
       </div>`;
-    }).join('');
+      }).join('')
+    )).join('');
   } catch (e) { list.innerHTML = ''; empty.style.display = 'block'; }
 }
 
@@ -433,14 +467,20 @@ async function mlLoadModels() {
   const list = document.getElementById('mlModelList');
   const empty = document.getElementById('mlModelEmpty');
   try {
+    await ensureWatchlistNameMap();
     const r = await api('/api/v1/ml/models');
     App.trainedModels = r.models || [];
     if (!App.trainedModels.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
     empty.style.display = 'none';
-    list.innerHTML = App.trainedModels.map((m, i) => {
+    list.innerHTML = mlGroupBySymbol(
+      App.trainedModels.map((m, i) => ({ ...m, _index: i }))
+    ).map(group => renderSymbolGroup(
+      group,
+      rows => `共 ${rows.length} 个训练模型，便于比较同一标的的不同建模方案`,
+      rows => rows.map(m => {
       const tm = m.test_metrics || {};
       const typeCls = m.model_type === 'lightgbm' ? 'lgb' : 'lasso';
-      return `<div class="model-item" onclick="mlSelectModel(${i})" id="ml-model-${i}">
+      return `<div class="model-item" onclick="mlSelectModel(${m._index})" id="ml-model-${m._index}">
         <div class="mi-head">
           <span class="mi-id">${m.model_id}</span>
           <span class="mi-type ${typeCls}">${m.model_type}</span>
@@ -451,10 +491,11 @@ async function mlLoadModels() {
           <div class="mi-m"><span class="mm-l">F1</span><span class="mm-v">${(tm.f1||0).toFixed(3)}</span></div>
           <div class="mi-m"><span class="mm-l">AUC</span><span class="mm-v">${(tm.auc||0).toFixed(3)}</span></div>
           <div class="mi-m"><span class="mm-l">Features</span><span class="mm-v">${m.n_features||'--'}</span></div>
-          <div class="mi-m"><span class="mm-l">Symbol</span><span class="mm-v">${m.symbol||'--'}</span></div>
+          <div class="mi-m"><span class="mm-l">标签</span><span class="mm-v">${m.label_col||'--'}</span></div>
         </div>
       </div>`;
-    }).join('');
+      }).join('')
+    )).join('');
   } catch (e) { list.innerHTML = ''; empty.style.display = 'block'; }
 }
 
@@ -521,22 +562,23 @@ async function mlPredict() {
     });
     const preds = r.predictions || [];
     const recent = preds.slice(-10);
-    let html = `<div style="font-size:.72rem;color:var(--t3);margin-bottom:4px">${sym} 最近 ${recent.length} 日信号 (${type.toUpperCase()}) · ${start} ~ ${end}</div>`;
-    recent.forEach(p => {
+    let html = `<div style="font-size:.72rem;color:var(--t3);margin-bottom:4px">${sym} 最近 ${recent.length} 日下一交易日操作建议 (${type.toUpperCase()}) · ${start} ~ ${end}</div>`;
+    recent.forEach((p, idx) => {
+      const globalIdx = preds.length - recent.length + idx;
+      const prev = globalIdx > 0 ? preds[globalIdx - 1] : null;
       if (type === 'gp') {
-        const dir = p.direction;
-        const stateCls = dir > 0 ? 'long' : (dir < 0 ? 'short' : 'neutral');
-        const stateText = dir > 0 ? '看多' : (dir < 0 ? '看空' : '中性');
+        const stateText = nextTradeActionFromDirection(p.direction, prev?.direction);
+        const stateCls = actionBadgeClass(stateText);
         html += `<div class="signal-row">
           <span class="signal-date">${p.date}</span>
           <span class="signal-badge ${stateCls}">${stateText}</span>
           <span class="signal-prob">sig: ${p.signal?.toFixed(4) || '--'}</span>
         </div>`;
       } else {
-        const isLong = p.prediction === 1;
+        const action = nextTradeActionFromPrediction(p.prediction, prev?.prediction);
         html += `<div class="signal-row">
           <span class="signal-date">${p.date}</span>
-          <span class="signal-badge ${isLong ? 'long' : 'short'}">${isLong ? '看多' : '看空'}</span>
+          <span class="signal-badge ${actionBadgeClass(action)}">${action}</span>
           <span class="signal-prob">${p.probability != null ? (p.probability * 100).toFixed(1) + '%' : '--'}</span>
         </div>`;
       }
@@ -697,9 +739,11 @@ async function cePredict() {
     const last10 = preds.slice(-10);
     let html = `<div style="font-size:.78rem;color:var(--t2);margin-bottom:6px">自定义表达式预测 @ ${inp.symbol} — ${preds.length} 条信号 (显示最近10条)</div>`;
     html += '<table class="eval-table" style="font-size:.7rem"><thead><tr><th>日期</th><th>信号值</th><th>方向</th></tr></thead><tbody>';
-    last10.forEach(p => {
-      const stateCls = p.direction > 0 ? 'long' : (p.direction < 0 ? 'short' : 'neutral');
-      const stateText = p.direction > 0 ? '看多' : (p.direction < 0 ? '看空' : '中性');
+    last10.forEach((p, idx) => {
+      const globalIdx = preds.length - last10.length + idx;
+      const prev = globalIdx > 0 ? preds[globalIdx - 1] : null;
+      const stateText = nextTradeActionFromDirection(p.direction, prev?.direction);
+      const stateCls = actionBadgeClass(stateText);
       html += `<tr><td>${p.date}</td><td class="mono">${p.signal}</td><td><span class="signal-badge ${stateCls}">${stateText}</span></td></tr>`;
     });
     html += '</tbody></table>';

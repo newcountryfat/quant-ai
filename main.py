@@ -21,7 +21,6 @@ from services.strategy_service.main import StrategyService
 from services.monitor_service.main import MonitorService
 from services.report_service.main import ReportService
 from services.risk_service.main import RiskService
-from services.paper_trading.main import PaperTradingService
 from services.scheduler import SchedulerService
 
 LOG_FORMAT = (
@@ -62,19 +61,17 @@ async def main() -> None:
     data_svc = DataService(bus)
     strategy_svc = StrategyService(bus)
     monitor_svc = MonitorService(bus)
-    report_svc = ReportService(bus)
+    report_svc = ReportService(bus, data_svc=data_svc, strategy_svc=strategy_svc, monitor_svc=monitor_svc)
     risk_svc = RiskService(bus)
-    paper_svc = PaperTradingService(bus)
     scheduler_svc = SchedulerService(bus, data_svc=data_svc)
 
-    set_services(bus, data_svc, strategy_svc, monitor_svc, report_svc, risk_svc, paper_svc)
+    set_services(bus, data_svc, strategy_svc, monitor_svc, report_svc, risk_svc)
 
     await data_svc.start()
     await strategy_svc.start()
     await monitor_svc.start()
     await report_svc.start()
     await risk_svc.start()
-    await paper_svc.start()
     await scheduler_svc.start()
 
     logger.info(

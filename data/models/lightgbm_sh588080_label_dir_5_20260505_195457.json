@@ -1,0 +1,108 @@
+{
+  "model_id": "lightgbm_sh588080_label_dir_5_20260505_195457",
+  "model_type": "lightgbm",
+  "symbol": "sh588080",
+  "label_col": "label_dir_5",
+  "n_features": 26,
+  "n_train": 268,
+  "n_test": 68,
+  "train_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "auc": 1.0,
+    "log_loss": 0.087602
+  },
+  "test_metrics": {
+    "accuracy": 0.647059,
+    "precision": 0.644444,
+    "recall": 0.783784,
+    "f1": 0.707317,
+    "auc": 0.612031,
+    "log_loss": 0.872654
+  },
+  "feature_importance": [
+    {
+      "feature": "adx",
+      "importance": 190
+    },
+    {
+      "feature": "macd",
+      "importance": 96
+    },
+    {
+      "feature": "roc_5",
+      "importance": 88
+    },
+    {
+      "feature": "vol_ratio",
+      "importance": 84
+    },
+    {
+      "feature": "ma_5",
+      "importance": 79
+    },
+    {
+      "feature": "ma_60",
+      "importance": 76
+    },
+    {
+      "feature": "ma_10",
+      "importance": 68
+    },
+    {
+      "feature": "plus_di",
+      "importance": 60
+    },
+    {
+      "feature": "rvol_5",
+      "importance": 60
+    },
+    {
+      "feature": "atr",
+      "importance": 57
+    },
+    {
+      "feature": "ema_5",
+      "importance": 54
+    },
+    {
+      "feature": "macd_hist",
+      "importance": 52
+    },
+    {
+      "feature": "co_range",
+      "importance": 51
+    },
+    {
+      "feature": "ret_1",
+      "importance": 47
+    },
+    {
+      "feature": "rvol_10",
+      "importance": 46
+    },
+    {
+      "feature": "rvol_20",
+      "importance": 46
+    },
+    {
+      "feature": "bb_width",
+      "importance": 45
+    },
+    {
+      "feature": "ma_20",
+      "importance": 43
+    },
+    {
+      "feature": "hl_range",
+      "importance": 43
+    },
+    {
+      "feature": "minus_di",
+      "importance": 38
+    }
+  ],
+  "created_at": "2026-05-05T19:54:58.210205"
+}

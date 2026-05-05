@@ -1,0 +1,128 @@
+{
+  "model_id": "lasso_sh510300_label_dir_5_20260505_184129",
+  "model_type": "lasso",
+  "symbol": "sh510300",
+  "label_col": "label_dir_5",
+  "n_features": 30,
+  "n_train": 251,
+  "n_test": 63,
+  "train_metrics": {
+    "accuracy": 0.7251,
+    "precision": 0.736842,
+    "recall": 0.880503,
+    "f1": 0.802292,
+    "auc": 0.801408,
+    "log_loss": 0.529765
+  },
+  "test_metrics": {
+    "accuracy": 0.380952,
+    "precision": 0.421053,
+    "recall": 0.484848,
+    "f1": 0.450704,
+    "auc": 0.374747,
+    "log_loss": 0.883934
+  },
+  "feature_importance": [
+    {
+      "feature": "stoch_d",
+      "importance": 1.115416,
+      "coef": 1.115416
+    },
+    {
+      "feature": "ema_5",
+      "importance": 1.051234,
+      "coef": -1.051234
+    },
+    {
+      "feature": "roc_10",
+      "importance": 0.790135,
+      "coef": -0.790135
+    },
+    {
+      "feature": "ma_20",
+      "importance": 0.637937,
+      "coef": -0.637937
+    },
+    {
+      "feature": "ma_60",
+      "importance": 0.628329,
+      "coef": 0.628329
+    },
+    {
+      "feature": "ma_5",
+      "importance": 0.621836,
+      "coef": 0.621836
+    },
+    {
+      "feature": "atr_pct",
+      "importance": 0.596164,
+      "coef": 0.596164
+    },
+    {
+      "feature": "adx",
+      "importance": 0.504623,
+      "coef": 0.504623
+    },
+    {
+      "feature": "macd_hist",
+      "importance": 0.439124,
+      "coef": -0.439124
+    },
+    {
+      "feature": "wr_14",
+      "importance": 0.387933,
+      "coef": -0.387933
+    },
+    {
+      "feature": "rvol_5",
+      "importance": 0.363174,
+      "coef": -0.363174
+    },
+    {
+      "feature": "co_range",
+      "importance": 0.298697,
+      "coef": 0.298697
+    },
+    {
+      "feature": "stoch_k",
+      "importance": 0.279978,
+      "coef": 0.279978
+    },
+    {
+      "feature": "cci",
+      "importance": 0.245404,
+      "coef": 0.245404
+    },
+    {
+      "feature": "vol_ratio",
+      "importance": 0.227639,
+      "coef": 0.227639
+    },
+    {
+      "feature": "plus_di",
+      "importance": 0.197597,
+      "coef": -0.197597
+    },
+    {
+      "feature": "macd",
+      "importance": 0.1847,
+      "coef": -0.1847
+    },
+    {
+      "feature": "roc_5",
+      "importance": 0.183955,
+      "coef": -0.183955
+    },
+    {
+      "feature": "obv",
+      "importance": 0.182588,
+      "coef": 0.182588
+    },
+    {
+      "feature": "bb_width",
+      "importance": 0.168953,
+      "coef": -0.168953
+    }
+  ],
+  "created_at": "2026-05-05T18:41:30.065761"
+}

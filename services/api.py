@@ -41,7 +41,6 @@ _strategy_svc = None
 _monitor_svc = None
 _report_svc = None
 _risk_svc = None
-_paper_svc = None
 
 
 def set_services(
@@ -51,16 +50,14 @@ def set_services(
     monitor_svc,
     report_svc,
     risk_svc=None,
-    paper_svc=None,
 ) -> None:
-    global _bus, _data_svc, _strategy_svc, _monitor_svc, _report_svc, _risk_svc, _paper_svc
+    global _bus, _data_svc, _strategy_svc, _monitor_svc, _report_svc, _risk_svc
     _bus = bus
     _data_svc = data_svc
     _strategy_svc = strategy_svc
     _monitor_svc = monitor_svc
     _report_svc = report_svc
     _risk_svc = risk_svc
-    _paper_svc = paper_svc
 
 
 # ---------- Pydantic models ----------
@@ -101,6 +98,7 @@ class BacktestRequest(BaseModel):
     start: str = "2024-01-01"
     end: str = Field(default_factory=lambda: date.today().isoformat())
     params: dict[str, Any] = Field(default_factory=lambda: {"fast": 5, "slow": 20})
+    save_result: bool = True
 
 
 class BacktestFolderRequest(BaseModel):
@@ -154,6 +152,12 @@ class HealthResponse(BaseModel):
     memory_percent: float
     disk_percent: float
     timestamp: str
+    data_service: bool = False
+    strategy_service: bool = False
+    monitor_service: bool = False
+    report_service: bool = False
+    risk_service: bool = False
+    scheduler: bool = True
 
 
 class ReportResponse(BaseModel):
@@ -171,6 +175,12 @@ async def health():
             memory_percent=0,
             disk_percent=0,
             timestamp=datetime.now().isoformat(),
+            data_service=_data_svc is not None,
+            strategy_service=_strategy_svc is not None,
+            monitor_service=_monitor_svc is not None,
+            report_service=_report_svc is not None,
+            risk_service=_risk_svc is not None,
+            scheduler=_bus is not None,
         )
     h = await _monitor_svc.check_system_health()
     return HealthResponse(
@@ -179,6 +189,12 @@ async def health():
         memory_percent=h.get("memory_percent", 0),
         disk_percent=h.get("disk_percent", 0),
         timestamp=datetime.now().isoformat(),
+        data_service=_data_svc is not None,
+        strategy_service=_strategy_svc is not None,
+        monitor_service=_monitor_svc is not None,
+        report_service=_report_svc is not None,
+        risk_service=_risk_svc is not None,
+        scheduler=_bus is not None,
     )
 
 
@@ -310,6 +326,13 @@ async def data_summary():
         },
         "generated_at": datetime.now().isoformat(),
     }
+
+
+@app.get("/api/v1/dashboard/overview", tags=["System"])
+async def dashboard_overview(refresh_data: bool = Query(True)):
+    if _report_svc is None:
+        raise HTTPException(503, "ReportService not available")
+    return await _report_svc.build_dashboard_overview(refresh_data=refresh_data)
 
 
 # ---------- Market Indices ----------
@@ -1087,6 +1110,7 @@ class GPBacktestRequest(BaseModel):
     end: str = Field(default_factory=lambda: date.today().isoformat())
     initial_capital: float = Field(1_000_000, gt=0)
     commission: float = Field(0.001, ge=0)
+    save_result: bool = True
 
 
 class GPSaveSingleRequest(BaseModel):
@@ -1119,6 +1143,7 @@ class MLBacktestRequest(BaseModel):
     initial_capital: float = Field(1_000_000, gt=0)
     commission: float = Field(0.001, ge=0)
     threshold: float = Field(0.5, ge=0.0, le=1.0, description="Probability threshold for buy signal")
+    save_result: bool = True
 
 
 class PipelineRequest(BaseModel):
@@ -1166,6 +1191,8 @@ async def train_model(req: TrainModelRequest):
             train_ratio=req.train_ratio, start=req.start, end=req.end,
             params=req.params,
         )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -1183,6 +1210,8 @@ async def model_walk_forward(req: ModelWFRequest):
             step_days=req.step_days, start=req.start, end=req.end,
             params=req.params,
         )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -1212,14 +1241,17 @@ async def gp_mine(req: GPMineRequest):
     """Run GP expression mining for timing signal discovery."""
     if _strategy_svc is None:
         raise HTTPException(503, "StrategyService not available")
-    return await _strategy_svc.gp_mine(
-        symbol=req.symbol, forward_period=req.forward_period,
-        population_size=req.population_size,
-        n_generations=req.n_generations,
-        metric=req.metric, max_depth=req.max_depth,
-        parsimony_coeff=req.parsimony_coeff,
-        save=req.save, start=req.start, end=req.end,
-    )
+    try:
+        return await _strategy_svc.gp_mine(
+            symbol=req.symbol, forward_period=req.forward_period,
+            population_size=req.population_size,
+            n_generations=req.n_generations,
+            metric=req.metric, max_depth=req.max_depth,
+            parsimony_coeff=req.parsimony_coeff,
+            save=req.save, start=req.start, end=req.end,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/v1/ml/gp-predict", tags=["ML"])
@@ -1276,6 +1308,7 @@ class CustomExprRequest(BaseModel):
     end: str = Field(default_factory=lambda: date.today().isoformat())
     initial_capital: float = Field(1_000_000, gt=0)
     commission: float = Field(0.001, ge=0)
+    save_result: bool = True
 
 
 @app.post("/api/v1/ml/custom-expression/evaluate", tags=["ML"])
@@ -1311,6 +1344,7 @@ async def custom_expr_backtest(req: CustomExprRequest):
         start=req.start, end=req.end,
         initial_capital=req.initial_capital,
         commission=req.commission,
+        save_result=req.save_result,
     )
     from dataclasses import asdict
     trades = [TradeRecord(**asdict(t)) for t in (result.trades or [])]
@@ -1462,6 +1496,7 @@ async def backtest_gp(req: GPBacktestRequest):
         start=req.start, end=req.end,
         initial_capital=req.initial_capital,
         commission=req.commission,
+        save_result=req.save_result,
     )
     from dataclasses import asdict
     trades = [TradeRecord(**asdict(t)) for t in (result.trades or [])]
@@ -1489,6 +1524,7 @@ async def backtest_ml(req: MLBacktestRequest):
         initial_capital=req.initial_capital,
         commission=req.commission,
         threshold=req.threshold,
+        save_result=req.save_result,
     )
     from dataclasses import asdict
     trades = [TradeRecord(**asdict(t)) for t in (result.trades or [])]
@@ -1519,6 +1555,8 @@ async def run_pipeline(req: PipelineRequest):
             wf_step_days=req.wf_step_days,
             start=req.start, end=req.end, model_params=req.model_params,
         )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
 
@@ -1535,6 +1573,7 @@ async def run_backtest(req: BacktestRequest):
         start=req.start,
         end=req.end,
         params=req.params,
+        save_result=req.save_result,
     )
     from dataclasses import asdict
     trades = [TradeRecord(**asdict(t)) for t in (result.trades or [])]
@@ -1659,68 +1698,6 @@ async def risk_thresholds():
         "concentration": t.concentration,
         "single_stock_limit": t.single_stock_limit,
     }
-
-
-# ---------- Paper Trading ----------
-
-class PaperAccountRequest(BaseModel):
-    account_id: str = "default"
-    initial_capital: float = 1_000_000
-    commission_rate: float = 0.001
-    stop_loss_pct: float = 0.10
-    take_profit_pct: float = 0.20
-
-
-class PaperOrderRequest(BaseModel):
-    symbol: str
-    side: str
-    quantity: float
-    account_id: str = "default"
-    price: float | None = None
-
-
-@app.post("/api/v1/paper/accounts", tags=["Paper Trading"])
-async def create_paper_account(req: PaperAccountRequest):
-    if _paper_svc is None:
-        raise HTTPException(503, "PaperTradingService not available")
-    return await _paper_svc.create_account(
-        req.account_id, req.initial_capital, req.commission_rate, req.stop_loss_pct, req.take_profit_pct,
-    )
-
-
-@app.get("/api/v1/paper/accounts", tags=["Paper Trading"])
-async def list_paper_accounts():
-    if _paper_svc is None:
-        raise HTTPException(503, "PaperTradingService not available")
-    return {"accounts": await _paper_svc.list_accounts()}
-
-
-@app.get("/api/v1/paper/accounts/{account_id}", tags=["Paper Trading"])
-async def get_paper_account(account_id: str):
-    if _paper_svc is None:
-        raise HTTPException(503, "PaperTradingService not available")
-    return await _paper_svc.get_account(account_id)
-
-
-@app.post("/api/v1/paper/accounts/{account_id}/reset", tags=["Paper Trading"])
-async def reset_paper_account(account_id: str):
-    if _paper_svc is None:
-        raise HTTPException(503, "PaperTradingService not available")
-    return await _paper_svc.reset_account(account_id)
-
-
-@app.post("/api/v1/paper/orders", tags=["Paper Trading"])
-async def place_paper_order(req: PaperOrderRequest):
-    if _paper_svc is None:
-        raise HTTPException(503, "PaperTradingService not available")
-    return await _paper_svc.place_order(req.symbol, req.side, req.quantity, req.account_id, req.price)
-
-
-@app.get("/api/v1/paper/orders", tags=["Paper Trading"])
-async def list_paper_orders(account_id: str = Query("default"), limit: int = Query(50, ge=1, le=200)):
-    if _paper_svc is None:
-        raise HTTPException(503, "PaperTradingService not available")
-    return {"orders": await _paper_svc.get_orders(account_id, limit)}
 
 
 # ---------- Watchlist ----------
@@ -1866,6 +1843,25 @@ async def generate_daily_report():
         raise HTTPException(503, "ReportService not available")
     md = await _report_svc.generate_daily_report()
     return ReportResponse(content=md)
+
+
+@app.get("/api/v1/reports/daily-view", tags=["Reports"])
+async def daily_report_view(refresh_data: bool = Query(True)):
+    if _report_svc is None:
+        raise HTTPException(503, "ReportService not available")
+    return await _report_svc.build_daily_report_payload(refresh_data=refresh_data)
+
+
+@app.get("/api/v1/reports/strategy-snapshots", tags=["Reports"])
+async def report_strategy_snapshots(refresh_data: bool = Query(False)):
+    if _report_svc is None:
+        raise HTTPException(503, "ReportService not available")
+    return {
+        "items": await _report_svc.collect_strategy_snapshots(
+            refresh_data=refresh_data,
+            persist=True,
+        )
+    }
 
 
 # ---------- Event bus ----------

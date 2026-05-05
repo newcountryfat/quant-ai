@@ -487,6 +487,7 @@ class DataService:
         *,
         asset_type: str | None,
         only_active: bool = True,
+        watchlist_only: bool = False,
         limit: int | None = None,
         default_lookback_days: int = 400,
         overlap_days: int = 5,
@@ -494,11 +495,15 @@ class DataService:
         today = date.today().isoformat()
         filters = []
         params: list[object] = []
+        from_clause = "FROM asset_universe u"
+        select_clause = "SELECT u.symbol, u.asset_type"
+        if watchlist_only:
+            from_clause += " INNER JOIN watchlist w ON w.symbol = u.symbol"
         if asset_type:
-            filters.append("asset_type = ?")
+            filters.append("u.asset_type = ?")
             params.append(asset_type)
         if only_active:
-            filters.append("status = 'active'")
+            filters.append("u.status = 'active'")
         where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
         limit_clause = " LIMIT ?" if limit else ""
         if limit:
@@ -507,8 +512,8 @@ class DataService:
         with get_db() as conn:
             assets = conn.execute(
                 (
-                    "SELECT symbol, asset_type FROM asset_universe "
-                    f"{where_clause} ORDER BY asset_type, symbol{limit_clause}"
+                    f"{select_clause} {from_clause} "
+                    f"{where_clause} ORDER BY u.asset_type, u.symbol{limit_clause}"
                 ),
                 params,
             ).fetchall()
@@ -547,16 +552,22 @@ class DataService:
             "research_universe_incremental_sync",
             "success",
             f"Incrementally synchronized research universe asset_type={asset_type or 'all'}",
-            {"asset_type": asset_type or "all", "count": len(synced)},
+            {
+                "asset_type": asset_type or "all",
+                "watchlist_only": watchlist_only,
+                "count": len(synced),
+            },
         )
         logger.info(
-            "incrementally synchronized research universe asset_type={} count={}",
+            "incrementally synchronized research universe asset_type={} watchlist_only={} count={}",
             asset_type or "all",
+            watchlist_only,
             len(synced),
         )
         return {
             "status": "ok",
             "asset_type": asset_type or "all",
+            "watchlist_only": watchlist_only,
             "count": len(synced),
             "synced": synced,
             "mode": "incremental",
